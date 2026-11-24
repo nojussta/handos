@@ -141,9 +141,18 @@ impl FswPswFile {
         changes: &[PresetChange],
         enable: bool,
     ) -> Result<Vec<CodingDiff>> {
+        if self.is_empty() {
+            return Err(HandosError::Protocol(
+                "refusing to modify empty ECU coding trace".to_string(),
+            ));
+        }
         let mut diffs = Vec::new();
         for change in changes {
-            let resolved_name = self.resolve_parameter_name(&change.parameter, &change.aliases);
+            let resolved_name = self
+                .find_existing_parameter(&change.parameter, &change.aliases)
+                .ok_or_else(|| HandosError::UnknownParameter {
+                    parameter: change.parameter.clone(),
+                })?;
             let target_val = if enable {
                 &change.value
             } else {
@@ -184,15 +193,20 @@ impl FswPswFile {
     }
 
     fn resolve_parameter_name(&self, primary: &str, aliases: &[String]) -> String {
+        self.find_existing_parameter(primary, aliases)
+            .unwrap_or_else(|| primary.to_string())
+    }
+
+    fn find_existing_parameter(&self, primary: &str, aliases: &[String]) -> Option<String> {
         if self.entries.contains_key(primary) {
-            return primary.to_string();
+            return Some(primary.to_string());
         }
         for alias in aliases {
             if self.entries.contains_key(alias) {
-                return alias.clone();
+                return Some(alias.clone());
             }
         }
-        primary.to_string()
+        None
     }
 }
 

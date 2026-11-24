@@ -185,10 +185,23 @@ impl<T: Transport> HandosSession<T> {
         changes: &[PresetChange],
         enable: bool,
     ) -> Result<CodingReport> {
+        if ecu.coding_index.trim().is_empty() || ecu.coding_index.eq_ignore_ascii_case("UNKNOWN") {
+            return Err(HandosError::Protocol(format!(
+                "refusing to code ECU '{}' with missing/unknown coding index",
+                ecu.name
+            )));
+        }
+
         let original = self.read_ecu_coding(ecu)?;
+        if original.is_empty() {
+            return Err(HandosError::Protocol(format!(
+                "ECU '{}' returned empty coding trace; aborting write",
+                ecu.name
+            )));
+        }
         let backup_entry = self.backups.save_backup(vin, &ecu.name, &original)?;
 
-        let mut modified = original;
+        let mut modified = original.clone();
         let diffs = if enable {
             modified.apply_preset_changes(changes)?
         } else {
@@ -203,20 +216,26 @@ impl<T: Transport> HandosSession<T> {
             });
         }
 
-        self.write_ecu_coding(ecu, &modified)?;
+        if let Err(write_err) = self.write_ecu_coding(ecu, &modified) {
+            // Attempt automatic rollback to original backup
+            let _ = self.write_ecu_coding(ecu, &original);
+            return Err(write_err);
+        }
 
-        // Re-read and verify every changed parameter.
+        // Re-read and verify every changed parameter; rollback automatically on mismatch.
         let verify_read = self.read_ecu_coding(ecu)?;
         for diff in &diffs {
             let actual = verify_read
                 .get_single(&diff.parameter)
                 .unwrap_or("<missing>");
             if actual != diff.new_value {
+                let rollback_ok = self.write_ecu_coding(ecu, &original).is_ok();
                 return Err(HandosError::VerificationFailed {
                     ecu: ecu.name.clone(),
                     parameter: diff.parameter.clone(),
                     expected: diff.new_value.clone(),
                     actual: actual.to_string(),
+                    rollback_ok,
                 });
             }
         }
@@ -229,12 +248,39 @@ impl<T: Transport> HandosSession<T> {
         })
     }
 
-    /// Restores an ECU from a previously saved `.trc` backup file.
+    /// Restores an ECU from a previously saved `.trc` backup file, enforcing voltage & verification.
     pub fn restore_backup(&mut self, ecu: &EcuInfo, backup_path: &str) -> Result<Vec<CodingDiff>> {
+        if let Some(v) = &self.cached_vehicle {
+            if v.battery_voltage < MIN_SAFE_CODING_VOLTAGE {
+                return Err(HandosError::LowVoltage {
+                    voltage: v.battery_voltage,
+                    minimum: MIN_SAFE_CODING_VOLTAGE,
+                });
+            }
+        }
         let backup_data = self.backups.load_backup(backup_path)?;
+        if backup_data.is_empty() {
+            return Err(HandosError::Backup(
+                "refusing to restore empty backup file".to_string(),
+            ));
+        }
         let current = self.read_ecu_coding(ecu)?;
         let diffs = current.diff_against(&backup_data);
         self.write_ecu_coding(ecu, &backup_data)?;
+
+        let verify = self.read_ecu_coding(ecu)?;
+        for diff in &diffs {
+            let actual = verify.get_single(&diff.parameter).unwrap_or("<missing>");
+            if actual != diff.new_value {
+                return Err(HandosError::VerificationFailed {
+                    ecu: ecu.name.clone(),
+                    parameter: diff.parameter.clone(),
+                    expected: diff.new_value.clone(),
+                    actual: actual.to_string(),
+                    rollback_ok: false,
+                });
+            }
+        }
         Ok(diffs)
     }
 

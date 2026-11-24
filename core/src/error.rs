@@ -28,12 +28,16 @@ pub enum HandosError {
     #[error("preset '{preset_id}' does not match chassis {chassis}")]
     ChassisMismatch { preset_id: String, chassis: String },
 
-    #[error("verification failed for {ecu}: parameter '{parameter}' expected '{expected}', got '{actual}'")]
+    #[error("parameter '{parameter}' (and aliases) not present in ECU coding data; refusing to write unknown parameter")]
+    UnknownParameter { parameter: String },
+
+    #[error("verification failed for {ecu}: parameter '{parameter}' expected '{expected}', got '{actual}' (rollback_attempted={rollback_ok})")]
     VerificationFailed {
         ecu: String,
         parameter: String,
         expected: String,
         actual: String,
+        rollback_ok: bool,
     },
 
     #[error("backup error: {0}")]
