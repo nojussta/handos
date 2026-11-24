@@ -17,13 +17,17 @@ runs:
         distribution: temurin
         java-version: "17"
 
-    - uses: android-actions/setup-android@v3
+    - name: Install cargo-ndk
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-ndk
 
-    - name: Install Android NDK & cargo-ndk
+    - name: Ensure Android NDK & SDK 35 are installed
       shell: bash
       run: |
-        sdkmanager "ndk;27.1.12297006"
-        cargo install cargo-ndk --locked
+        SDK_MGR="$(command -v sdkmanager || find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)"
+        yes | "$SDK_MGR" --licenses >/dev/null 2>&1 || true
+        "$SDK_MGR" "ndk;27.1.12297006" "platforms;android-35" "build-tools;35.0.0" >/dev/null
 
     - name: Build libhandos_core.so
       shell: bash
@@ -39,4 +43,4 @@ runs:
     - name: Build ${{ inputs.variant }} APK
       shell: bash
       working-directory: android
-      run: gradle assemble${{ inputs.variant }} --no-daemon
+      run: gradle assemble${{ inputs.variant }} --no-daemon --console=plain
