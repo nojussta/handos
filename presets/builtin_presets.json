@@ -237,5 +237,122 @@
         "aliases": []
       }
     ]
+  },
+  {
+    "id": "fxx_welcome_emblem_m",
+    "title": "Welcome Screen: BMW M Logo",
+    "description": "Sets NBT EVO startup animation to the BMW M logo (STARTUP_EMBLEM = variant_01).",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "STARTUP_EMBLEM",
+        "value": "variant_01",
+        "off_value": "variant_00",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_welcome_emblem_alpina",
+    "title": "Welcome Screen: Alpina",
+    "description": "Sets NBT EVO startup animation to Alpina (STARTUP_EMBLEM = variant_08).",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "STARTUP_EMBLEM",
+        "value": "variant_08",
+        "off_value": "variant_00",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_welcome_emblem_bmw_i",
+    "title": "Welcome Screen: BMW i",
+    "description": "Sets NBT EVO startup animation to BMW i (STARTUP_EMBLEM = variant_03).",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "STARTUP_EMBLEM",
+        "value": "variant_03",
+        "off_value": "variant_00",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_welcome_emblem_mini",
+    "title": "Welcome Screen: MINI",
+    "description": "Sets NBT EVO startup animation to MINI (STARTUP_EMBLEM = variant_04).",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "STARTUP_EMBLEM",
+        "value": "variant_04",
+        "off_value": "variant_00",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_welcome_emblem_rr",
+    "title": "Welcome Screen: Rolls-Royce",
+    "description": "Sets NBT EVO startup animation to Rolls-Royce (STARTUP_EMBLEM = variant_05).",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "STARTUP_EMBLEM",
+        "value": "variant_05",
+        "off_value": "variant_00",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_door_handle_reverse",
+    "title": "Door Handle LEDs in Reverse (F-Series)",
+    "description": "Illuminates exterior door handle puddle LEDs when shifting into reverse.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "FEM_BODY",
+    "changes": [
+      {
+        "parameter": "OVT_BEI_RUECKFAHRLICHT",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e46_auto_lock",
+    "title": "Auto-Lock Doors Above 16 km/h (E46)",
+    "description": "Automatically locks doors when driving off on E46 GM5.",
+    "platform_families": ["E46"],
+    "target_ecu": "GM5",
+    "changes": [
+      {
+        "parameter": "VERRIEGELN_AUT_AB_X_KMH",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_welcome_lights",
+    "title": "Welcome Lights on Unlock (E8x / E9x)",
+    "description": "Turns on angel eyes and tail lights on key fob unlock via FRM.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "FRM",
+    "changes": [
+      {
+        "parameter": "WELCOME_LIGHT_ACTIVE",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
   }
 ]

@@ -107,6 +107,8 @@ fn f30_coding_flow_succeeds() {
         "fxx_video_in_motion",
         "fxx_nbt_evo_aa_prep",
         "fxx_nbt_evo_carplay_fullscreen",
+        "fxx_welcome_emblem_m",
+        "fxx_door_handle_reverse",
     ] {
         let preset = presets.iter().find(|p| p.id == id).unwrap();
         let report = session.apply_preset_safely(preset).unwrap();

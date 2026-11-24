@@ -213,6 +213,19 @@ fun HandosApp(
     var selectedChartParams by remember { mutableStateOf(setOf("boost", "rpm", "oil", "coolant")) }
     var expandedChart by remember { mutableStateOf(false) }
     var showSavedLogsPicker by remember { mutableStateOf(false) }
+    var selectedCustomSplashName by remember { mutableStateOf<String?>(null) }
+
+    val customSplashPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (c.moveToFirst() && idx >= 0) c.getString(idx) else "custom_splash.png"
+        } ?: "custom_splash.png"
+        selectedCustomSplashName = name
+        statusText = "Selected custom splash '$name'. Note: pushing custom images to NBT EVO requires SSH/SFTP root access (not OBD FDL coding)."
+    }
 
     val csvImporter = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -241,18 +254,26 @@ fun HandosApp(
             CodingItemUi("e46_usdm_corners", "E46", "LSZ", "USDM Corner Lights", "Front turn signals as sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
             CodingItemUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights", "Double-impulse hazard flash", "BLINKIMPULS_WARNBLK", "wert_02", "wert_01"),
             CodingItemUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows", "Hold fob to open/close windows", "KOMFORTSCHLIESSUNG_FB", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e46_auto_lock", "E46", "GM5", "Auto-Lock Doors Above 16 km/h", "Automatically lock doors when driving off", "VERRIEGELN_AUT_AB_X_KMH", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_usdm_corners", "E8xE9x", "FRM", "USDM Corner Lights", "Dimmed front turn signals as sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_double_hazard", "E8xE9x", "FRM", "Double Hazard Lights", "Double-impulse hazard blink", "DOPPELBLINKIMPULS_WARNBLK", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e8x_e9x_welcome_lights", "E8xE9x", "FRM", "Welcome Lights on Unlock", "Turn on angel eyes & tail lights on unlock", "WELCOME_LIGHT_ACTIVE", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_start_stop_memory", "E8xE9x", "IHKA", "Auto Start/Stop Memory", "Remember last Start/Stop state", "MSA_MEMORY", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_digital_speedo", "E8xE9x", "KOMBI", "Digital Speedometer", "Uncorrected digital speed in cluster", "BC_DIGITAL_V", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_start_stop_memory", "Fxx", "FEM_BODY", "Auto Start/Stop Memory", "Remember last Start/Stop state across restarts", "TCM_MSA_MEMORY", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_start_stop_off_default", "Fxx", "FEM_BODY", "Auto Start/Stop Off by Default", "Default Start/Stop to OFF on every start", "TCM_MSA_DEFAULT_OFF", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_digital_speedo", "Fxx", "KOMBI", "Digital Speedometer", "Show digital speed readout in cluster", "BC_DIGITAL_V", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock", "Fold side mirrors on key fob / comfort lock", "ASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_door_handle_reverse", "Fxx", "FEM_BODY", "Door Handle LEDs in Reverse", "Light exterior door handles in reverse", "OVT_BEI_RUECKFAHRLICHT", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers", "Enable US-spec front amber sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion", "Remove iDrive video speed lock", "SPEEDLOCK_X_KMH_MAX", "werte=FF", "werte=03"),
             CodingItemUi("fxx_nbt_evo_aa_prep", "Fxx", "HU_NBT", "NBT EVO Android Auto Prep", "Enable CarLife slot & WLAN flags for NBT EVO AA", "CARLIFE", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_nbt_evo_carplay_fullscreen", "Fxx", "HU_NBT", "NBT EVO CarPlay Fullscreen", "Enable fullscreen CarPlay on NBT EVO ID5/ID6", "CARPLAY_FULLSCREEN", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_welcome_emblem_m", "Fxx", "HU_NBT", "Welcome Screen: BMW M Logo", "NBT EVO startup animation: BMW M", "STARTUP_EMBLEM", "variant_01", "variant_00"),
+            CodingItemUi("fxx_welcome_emblem_alpina", "Fxx", "HU_NBT", "Welcome Screen: Alpina", "NBT EVO startup animation: Alpina", "STARTUP_EMBLEM", "variant_08", "variant_00"),
+            CodingItemUi("fxx_welcome_emblem_bmw_i", "Fxx", "HU_NBT", "Welcome Screen: BMW i", "NBT EVO startup animation: BMW i", "STARTUP_EMBLEM", "variant_03", "variant_00"),
+            CodingItemUi("fxx_welcome_emblem_mini", "Fxx", "HU_NBT", "Welcome Screen: MINI", "NBT EVO startup animation: MINI", "STARTUP_EMBLEM", "variant_04", "variant_00"),
+            CodingItemUi("fxx_welcome_emblem_rr", "Fxx", "HU_NBT", "Welcome Screen: Rolls-Royce", "NBT EVO startup animation: Rolls-Royce", "STARTUP_EMBLEM", "variant_05", "variant_00"),
         )
     }
 
@@ -943,6 +964,53 @@ fun HandosApp(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = 12.dp),
                         ) {
+                            if (scannedVehicle == null || showAllVehicles || scannedVehicle?.ecus?.contains("HU_NBT") == true) {
+                                item {
+                                    ElevatedCard(
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("NBT EVO Welcome Screen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                "Built-in BMW animations code via OBD (STARTUP_EMBLEM). Custom images require SSH/SFTP access.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            val splashOptions = listOf(
+                                                "fxx_welcome_emblem_m" to "BMW M",
+                                                "fxx_welcome_emblem_alpina" to "Alpina",
+                                                "fxx_welcome_emblem_bmw_i" to "BMW i",
+                                                "fxx_welcome_emblem_mini" to "MINI",
+                                                "fxx_welcome_emblem_rr" to "Rolls-Royce",
+                                            )
+                                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                items(splashOptions) { (presetId, label) ->
+                                                    val active = enabledPresetIds.contains(presetId)
+                                                    FilterChip(
+                                                        selected = active,
+                                                        onClick = {
+                                                            codingItems.find { it.id == presetId }?.let { item ->
+                                                                pendingConfirm = PendingConfirmation(item, enable = !active)
+                                                            }
+                                                        },
+                                                        label = { Text(label) },
+                                                    )
+                                                }
+                                            }
+                                            OutlinedButton(
+                                                shape = RoundedCornerShape(12.dp),
+                                                onClick = { customSplashPicker.launch(arrayOf("image/*")) },
+                                            ) {
+                                                Icon(Icons.Rounded.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(selectedCustomSplashName?.let { "Custom: $it" } ?: "Pick Custom Image (SSH)")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             items(visibleCodingItems) { item ->
                                 val isEnabled = enabledPresetIds.contains(item.id)
                                 ElevatedCard(
