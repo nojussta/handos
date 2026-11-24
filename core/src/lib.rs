@@ -17,8 +17,9 @@ pub use error::{HandosError, Result};
 pub use fsw_psw::{parse_sp_daten_defs, FswPswFile, SpDatenParamDef};
 pub use kwp_ds2::{kwp_jobs, Ds2Packet, KwpPacket};
 pub use nbt_evo_aa::{
-    install_nbt_evo_android_auto, run_nbt_evo_preflight, HeadUnitSshClient, NbtEvoInstallReport,
-    NbtEvoPreflight, TcpSshProbe, DEFAULT_NBT_EVO_HOST, NBT_EVO_MIN_VOLTAGE,
+    install_nbt_evo_android_auto, run_nbt_evo_preflight, scan_nbt_evo_preflight, HeadUnitSshClient,
+    NbtEvoFirmware, NbtEvoInstallReport, NbtEvoPreflight, TcpSshProbe, DEFAULT_NBT_EVO_HOST,
+    NBT_EVO_MIN_VOLTAGE,
 };
 pub use nettodat::{CodingParamSchema, EcuCodingSchema, NettodatImage};
 pub use presets::{

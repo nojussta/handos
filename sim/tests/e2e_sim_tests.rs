@@ -1,5 +1,6 @@
 use handos_core::{
-    builtin_presets, BackupManager, Chassis, HandosError, HandosSession, MhdWifiTransport,
+    builtin_presets, scan_nbt_evo_preflight, BackupManager, Chassis, HandosError, HandosSession,
+    MhdWifiTransport, TcpSshProbe,
 };
 use handos_sim::{spawn_simulator, SimulatedCar};
 use std::time::Duration;
@@ -88,6 +89,16 @@ fn f30_coding_flow_succeeds() {
 
     let vehicle = session.scan_vehicle().unwrap();
     assert_eq!(vehicle.chassis, Chassis::F30);
+
+    let hu = vehicle.ecus.iter().find(|e| e.name == "HU_NBT").unwrap();
+    let fw = session.read_ecu_firmware(hu).unwrap();
+    assert_eq!(fw, "NBTevo_Y21432J");
+
+    let preflight =
+        scan_nbt_evo_preflight(&mut session, &TcpSshProbe::default(), "127.0.0.1:1", None).unwrap();
+    let parsed_fw = preflight.firmware.unwrap();
+    assert_eq!(parsed_fw.generation, Some('Y'));
+    assert!(parsed_fw.is_nbt_evo);
 
     let presets = builtin_presets();
     for id in [

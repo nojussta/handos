@@ -45,6 +45,17 @@ impl<T: Transport> HandosSession<T> {
         Ok(info)
     }
 
+    /// Reads the ECU identification / firmware string (e.g. `NBTevo_Y21432J`) via `SID 0x1A 0x80`.
+    pub fn read_ecu_firmware(&mut self, ecu: &EcuInfo) -> Result<String> {
+        let req = DiagnosticFrame::diagnostic(ecu.address, vec![sid::READ_ECU_ID, 0x80]);
+        let resp = self.transport.exchange(&req)?;
+        let payload = resp.check_positive(&ecu.name, sid::READ_ECU_ID)?;
+        let fw = std::str::from_utf8(payload).map_err(|e| {
+            HandosError::Protocol(format!("invalid UTF-8 firmware from {}: {e}", ecu.name))
+        })?;
+        Ok(fw.trim().to_string())
+    }
+
     /// Reads the current `FSW_PSW.TRC` coding data from a specific ECU.
     pub fn read_ecu_coding(&mut self, ecu: &EcuInfo) -> Result<FswPswFile> {
         let req = DiagnosticFrame::diagnostic(ecu.address, vec![sid::READ_CODING_DATA, 0x01]);

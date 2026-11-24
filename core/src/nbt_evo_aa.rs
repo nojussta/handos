@@ -14,12 +14,40 @@ pub const NBT_EVO_MIN_VOLTAGE: f32 = 12.0;
 /// Default NBT EVO head-unit ENET link-local IP & SSH port.
 pub const DEFAULT_NBT_EVO_HOST: &str = "169.254.199.99:22";
 
+/// Parsed NBT EVO firmware / iLevel identifier (e.g. `NBTevo_Y21432J`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NbtEvoFirmware {
+    pub raw: String,
+    /// Generation letter after `NBTevo_` (e.g. `'H'`, `'P'`, `'X'`, `'Y'`).
+    pub generation: Option<char>,
+    pub is_nbt_evo: bool,
+}
+
+impl NbtEvoFirmware {
+    pub fn parse(raw: &str) -> Self {
+        let trimmed = raw.trim().to_string();
+        let upper = trimmed.to_uppercase();
+        let generation = upper
+            .strip_prefix("NBTEVO_")
+            .and_then(|rest| rest.chars().next())
+            .filter(|c| c.is_ascii_alphabetic());
+        let is_nbt_evo =
+            upper.contains("NBTEVO") || upper.contains("NBT2") || upper.contains("EVO");
+        Self {
+            raw: trimmed,
+            generation,
+            is_nbt_evo,
+        }
+    }
+}
+
 /// Result of verifying whether an NBT EVO head unit meets all requirements
 /// before any coding or file push is attempted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NbtEvoPreflight {
     pub vin: String,
     pub head_unit_ecu: EcuInfo,
+    pub firmware: Option<NbtEvoFirmware>,
     pub battery_voltage: f32,
     pub is_f_series: bool,
     pub is_id5_or_id6: bool,
@@ -164,6 +192,7 @@ pub fn run_nbt_evo_preflight(
     NbtEvoPreflight {
         vin: vehicle.vin.clone(),
         head_unit_ecu,
+        firmware: None,
         battery_voltage: vehicle.battery_voltage,
         is_f_series,
         is_id5_or_id6,
@@ -171,6 +200,27 @@ pub fn run_nbt_evo_preflight(
         bundle_present,
         blocking_reasons: blocking,
     }
+}
+
+/// Scans the vehicle, reads the live `HU_NBT` / `HU_NBT2` firmware ID, and runs pre-flight checks.
+pub fn scan_nbt_evo_preflight<T: Transport>(
+    session: &mut HandosSession<T>,
+    ssh_client: &dyn HeadUnitSshClient,
+    ssh_address: &str,
+    bundle_dir: Option<&Path>,
+) -> Result<NbtEvoPreflight> {
+    let vehicle = session.scan_vehicle()?;
+    let mut preflight = run_nbt_evo_preflight(&vehicle, ssh_client, ssh_address, bundle_dir);
+    if let Some(hu) = vehicle
+        .ecus
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("HU_NBT") || e.name.eq_ignore_ascii_case("HU_NBT2"))
+    {
+        if let Ok(fw_raw) = session.read_ecu_firmware(hu) {
+            preflight.firmware = Some(NbtEvoFirmware::parse(&fw_raw));
+        }
+    }
+    Ok(preflight)
 }
 
 /// Safely orchestrates NBT EVO Android Auto installation:

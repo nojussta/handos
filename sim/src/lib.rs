@@ -220,6 +220,20 @@ impl SimulatedCar {
 
         let target = frame.target;
         match service {
+            sid::READ_ECU_ID => {
+                if let Some(ecu) = self.vehicle.ecus.iter().find(|e| e.address == target) {
+                    let fw = if ecu.name == "HU_NBT" {
+                        "NBTevo_Y21432J"
+                    } else {
+                        ecu.coding_index.as_str()
+                    };
+                    let mut body = vec![service + 0x40];
+                    body.extend_from_slice(fw.as_bytes());
+                    DiagnosticFrame::new(PayloadType::Diagnostic, target, TESTER_ADDRESS, body)
+                } else {
+                    neg(target, service, 0x31)
+                }
+            }
             sid::READ_CODING_DATA => {
                 if let Some(trc) = self.coding_data.get(&target) {
                     let mut body = vec![service + 0x40];
