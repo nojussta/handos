@@ -22,17 +22,15 @@ runs:
       with:
         tool: cargo-ndk
 
-    - name: Ensure Android NDK & SDK 35 are installed
+    - name: Ensure Android SDK 35 is installed
       shell: bash
       run: |
         SDK_MGR="$(command -v sdkmanager || find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)"
         yes | "$SDK_MGR" --licenses >/dev/null 2>&1 || true
-        "$SDK_MGR" "ndk;27.1.12297006" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+        "$SDK_MGR" "platforms;android-35" "build-tools;35.0.0" >/dev/null
 
     - name: Build libhandos_core.so
       shell: bash
-      env:
-        ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
       run: |
         cargo ndk -t arm64-v8a -t armeabi-v7a -o android/app/src/main/jniLibs build --release -p handos-core
 
