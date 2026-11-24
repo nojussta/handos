@@ -16,6 +16,8 @@ object HandosBridge {
 
     external fun nativeScanVehicle(host: String, backupDir: String): String
     external fun nativeApplyPreset(host: String, presetId: String, backupDir: String): String
+    external fun nativeRevertPreset(host: String, presetId: String, backupDir: String): String
+    external fun nativePresetStatuses(host: String, backupDir: String): String
     external fun nativeReadDtcs(host: String, backupDir: String): String
     external fun nativeClearDtcs(host: String, backupDir: String): String
     external fun nativeImportSchema(schemasDir: String, fileName: String, content: String): String

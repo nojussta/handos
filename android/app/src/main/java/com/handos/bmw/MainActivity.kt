@@ -49,7 +49,9 @@ data class CodingItemUi(
     val ecu: String,
     val title: String,
     val description: String,
-    val demoDiff: String,
+    val paramName: String,
+    val onValue: String,
+    val offValue: String,
 )
 
 data class VehicleUi(
@@ -131,26 +133,27 @@ fun HandosApp(
     var demoMode by remember { mutableStateOf(false) }
     var scannedVehicle by remember { mutableStateOf<VehicleUi?>(null) }
     var showAllVehicles by remember { mutableStateOf(false) }
+    var enabledPresetIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dtcs by remember { mutableStateOf<List<DtcUi>>(emptyList()) }
     var codingDialog by remember { mutableStateOf<CodingDialogState?>(null) }
 
     val codingItems = remember {
         listOf(
-            CodingItemUi("e46_usdm_corners", "E46", "LSZ", "USDM Corner Lights", "Front turn signals as sidemarkers", "SIDEMARKER_US: nicht_aktiv -> aktiv"),
-            CodingItemUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights", "Double-impulse hazard flash", "BLINKIMPULS_WARNBLK: wert_01 -> wert_02"),
-            CodingItemUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows", "Hold fob to open/close windows", "KOMFORTSCHLIESSUNG_FB: nicht_aktiv -> aktiv"),
-            CodingItemUi("e8x_e9x_usdm_corners", "E8xE9x", "FRM", "USDM Corner Lights", "Dimmed front turn signals as sidemarkers", "SIDEMARKER_US: nicht_aktiv -> aktiv"),
-            CodingItemUi("e8x_e9x_double_hazard", "E8xE9x", "FRM", "Double Hazard Lights", "Double-impulse hazard blink", "DOPPELBLINKIMPULS_WARNBLK: nicht_aktiv -> aktiv"),
-            CodingItemUi("e8x_e9x_start_stop_memory", "E8xE9x", "IHKA", "Auto Start/Stop Memory", "Remember last Start/Stop state", "MSA_MEMORY: nicht_aktiv -> aktiv"),
-            CodingItemUi("e8x_e9x_digital_speedo", "E8xE9x", "KOMBI", "Digital Speedometer", "Uncorrected digital speed in cluster", "BC_DIGITAL_V: nicht_aktiv -> aktiv"),
-            CodingItemUi("fxx_start_stop_memory", "Fxx", "FEM_BODY", "Auto Start/Stop Memory", "Remember last Start/Stop state across restarts", "TCM_MSA_MEMORY: nicht_aktiv -> aktiv"),
-            CodingItemUi("fxx_start_stop_off_default", "Fxx", "FEM_BODY", "Auto Start/Stop Off by Default", "Default Start/Stop to OFF on every start", "TCM_MSA_DEFAULT_OFF: nicht_aktiv -> aktiv"),
-            CodingItemUi("fxx_digital_speedo", "Fxx", "KOMBI", "Digital Speedometer", "Show digital speed readout in cluster", "BC_DIGITAL_V: nicht_aktiv -> aktiv"),
-            CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock", "Fold side mirrors on key fob / comfort lock", "ASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN: nicht_aktiv -> aktiv"),
-            CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers", "Enable US-spec front amber sidemarkers", "SIDEMARKER_US: nicht_aktiv -> aktiv"),
-            CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion", "Remove iDrive video speed lock", "SPEEDLOCK_X_KMH_MAX: werte=03 -> werte=FF"),
-            CodingItemUi("fxx_nbt_evo_aa_prep", "Fxx", "HU_NBT", "NBT EVO Android Auto Prep", "Enable CarLife slot & WLAN flags for NBT EVO AA", "CARLIFE: nicht_aktiv -> aktiv"),
-            CodingItemUi("fxx_nbt_evo_carplay_fullscreen", "Fxx", "HU_NBT", "NBT EVO CarPlay Fullscreen", "Enable fullscreen CarPlay on NBT EVO ID5/ID6", "CARPLAY_FULLSCREEN: nicht_aktiv -> aktiv"),
+            CodingItemUi("e46_usdm_corners", "E46", "LSZ", "USDM Corner Lights", "Front turn signals as sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights", "Double-impulse hazard flash", "BLINKIMPULS_WARNBLK", "wert_02", "wert_01"),
+            CodingItemUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows", "Hold fob to open/close windows", "KOMFORTSCHLIESSUNG_FB", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e8x_e9x_usdm_corners", "E8xE9x", "FRM", "USDM Corner Lights", "Dimmed front turn signals as sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e8x_e9x_double_hazard", "E8xE9x", "FRM", "Double Hazard Lights", "Double-impulse hazard blink", "DOPPELBLINKIMPULS_WARNBLK", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e8x_e9x_start_stop_memory", "E8xE9x", "IHKA", "Auto Start/Stop Memory", "Remember last Start/Stop state", "MSA_MEMORY", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e8x_e9x_digital_speedo", "E8xE9x", "KOMBI", "Digital Speedometer", "Uncorrected digital speed in cluster", "BC_DIGITAL_V", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_start_stop_memory", "Fxx", "FEM_BODY", "Auto Start/Stop Memory", "Remember last Start/Stop state across restarts", "TCM_MSA_MEMORY", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_start_stop_off_default", "Fxx", "FEM_BODY", "Auto Start/Stop Off by Default", "Default Start/Stop to OFF on every start", "TCM_MSA_DEFAULT_OFF", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_digital_speedo", "Fxx", "KOMBI", "Digital Speedometer", "Show digital speed readout in cluster", "BC_DIGITAL_V", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock", "Fold side mirrors on key fob / comfort lock", "ASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers", "Enable US-spec front amber sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion", "Remove iDrive video speed lock", "SPEEDLOCK_X_KMH_MAX", "werte=FF", "werte=03"),
+            CodingItemUi("fxx_nbt_evo_aa_prep", "Fxx", "HU_NBT", "NBT EVO Android Auto Prep", "Enable CarLife slot & WLAN flags for NBT EVO AA", "CARLIFE", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_nbt_evo_carplay_fullscreen", "Fxx", "HU_NBT", "NBT EVO CarPlay Fullscreen", "Enable fullscreen CarPlay on NBT EVO ID5/ID6", "CARPLAY_FULLSCREEN", "aktiv", "nicht_aktiv"),
         )
     }
 
@@ -176,6 +179,7 @@ fun HandosApp(
             ecus = setOf("FEM_BODY", "KOMBI", "HU_NBT"),
         )
         scannedVehicle = demoVehicle
+        enabledPresetIds = setOf("fxx_digital_speedo", "fxx_nbt_evo_carplay_fullscreen")
         dtcs = listOf(
             DtcUi("FEM_BODY", "8040B9", "Deactivation of terminal 30B: top startability limit reached", active = false),
             DtcUi("HU_NBT", "B7F8C3", "WLAN antenna open circuit (historic)", active = false),
@@ -184,16 +188,17 @@ fun HandosApp(
         selectedTab = 1
     }
 
-    fun runCodingFlow(item: CodingItemUi) {
+    fun runCodingFlow(item: CodingItemUi, enable: Boolean) {
+        val actionLabel = if (enable) "Enabling" else "Turning off"
         val baseSteps = listOf(
             CodingFlowStep("Checking battery voltage & ${item.ecu} link", StepState.Active),
             CodingFlowStep("Reading current ${item.ecu} coding (FSW_PSW.TRC)"),
             CodingFlowStep("Saving automatic VIN backup"),
-            CodingFlowStep("Writing modified coding to ${item.ecu}"),
+            CodingFlowStep("$actionLabel ${item.title} on ${item.ecu}"),
             CodingFlowStep("Re-reading & verifying changes"),
         )
         codingDialog = CodingDialogState(
-            title = item.title,
+            title = "${if (enable) "Enable" else "Turn Off"} ${item.title}",
             ecu = item.ecu,
             steps = baseSteps,
         )
@@ -215,12 +220,22 @@ fun HandosApp(
                 }
                 val vin = scannedVehicle?.vin ?: "DEMO_VIN"
                 val fakeBackup = "$backupDir/$vin/${item.ecu}_demo.trc"
+                val diffText = if (enable) {
+                    "${item.paramName}: ${item.offValue} -> ${item.onValue}"
+                } else {
+                    "${item.paramName}: ${item.onValue} -> ${item.offValue}"
+                }
+                enabledPresetIds = if (enable) {
+                    enabledPresetIds + item.id
+                } else {
+                    enabledPresetIds - item.id
+                }
                 codingDialog = codingDialog?.copy(
-                    diffs = listOf(item.demoDiff),
+                    diffs = listOf(diffText),
                     backupPath = fakeBackup,
                     finished = true,
                 )
-                statusText = "Demo coded ${item.title} (verified)."
+                statusText = "Demo: ${if (enable) "enabled" else "turned off"} ${item.title} (verified)."
                 return@launch
             }
 
@@ -236,7 +251,11 @@ fun HandosApp(
             }
 
             val raw = withContext(Dispatchers.IO) {
-                HandosBridge.nativeApplyPreset(host, item.id, backupDir)
+                if (enable) {
+                    HandosBridge.nativeApplyPreset(host, item.id, backupDir)
+                } else {
+                    HandosBridge.nativeRevertPreset(host, item.id, backupDir)
+                }
             }
             val json = JSONObject(raw)
             if (json.optBoolean("ok", false)) {
@@ -247,13 +266,18 @@ fun HandosApp(
                     "${d.optString("parameter")}: ${d.optString("old_value")} -> ${d.optString("new_value")}"
                 }
                 val bPath = data?.optString("backup_path")
+                enabledPresetIds = if (enable) {
+                    enabledPresetIds + item.id
+                } else {
+                    enabledPresetIds - item.id
+                }
                 codingDialog = codingDialog?.copy(
                     steps = baseSteps.map { it.copy(state = StepState.Done) },
                     diffs = diffs,
                     backupPath = bPath,
                     finished = true,
                 )
-                statusText = "Coded ${item.title} safely and verified."
+                statusText = "${if (enable) "Enabled" else "Turned off"} ${item.title} safely and verified."
             } else {
                 val errMsg = json.optString("error", "Unknown error")
                 codingDialog = codingDialog?.copy(
@@ -419,6 +443,23 @@ fun HandosApp(
                                                 batteryVoltage = obj.optDouble("battery_voltage", 0.0),
                                                 ecus = ecus,
                                             )
+                                            scope.launch {
+                                                val statusRaw = withContext(Dispatchers.IO) {
+                                                    HandosBridge.nativePresetStatuses(host, backupDir)
+                                                }
+                                                val sJson = JSONObject(statusRaw)
+                                                if (sJson.optBoolean("ok", false)) {
+                                                    val arr = sJson.optJSONArray("data") ?: JSONArray()
+                                                    enabledPresetIds = buildSet {
+                                                        for (i in 0 until arr.length()) {
+                                                            val entry = arr.getJSONObject(i)
+                                                            if (entry.optBoolean("enabled", false)) {
+                                                                add(entry.optString("id"))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         },
                                     ) {
                                         HandosBridge.nativeScanVehicle(host, backupDir)
@@ -511,6 +552,7 @@ fun HandosApp(
                         contentPadding = PaddingValues(bottom = 12.dp),
                     ) {
                         items(visibleCodingItems) { item ->
+                            val isEnabled = enabledPresetIds.contains(item.id)
                             ElevatedCard(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.elevatedCardColors(
@@ -536,7 +578,11 @@ fun HandosApp(
                                         Spacer(Modifier.width(8.dp))
                                         AssistChip(
                                             onClick = {},
-                                            label = { Text("${item.family} | ${item.ecu}") },
+                                            label = {
+                                                Text(
+                                                    if (isEnabled) "Enabled | ${item.ecu}" else "${item.family} | ${item.ecu}",
+                                                )
+                                            },
                                         )
                                     }
                                     Text(
@@ -545,14 +591,26 @@ fun HandosApp(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     Spacer(Modifier.height(4.dp))
-                                    FilledTonalButton(
-                                        enabled = !busy && codingDialog == null,
-                                        shape = RoundedCornerShape(12.dp),
-                                        onClick = { runCodingFlow(item) },
-                                    ) {
-                                        Icon(Icons.Rounded.Build, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Backup & Code")
+                                    if (isEnabled) {
+                                        OutlinedButton(
+                                            enabled = !busy && codingDialog == null,
+                                            shape = RoundedCornerShape(12.dp),
+                                            onClick = { runCodingFlow(item, enable = false) },
+                                        ) {
+                                            Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Backup & Turn Off")
+                                        }
+                                    } else {
+                                        FilledTonalButton(
+                                            enabled = !busy && codingDialog == null,
+                                            shape = RoundedCornerShape(12.dp),
+                                            onClick = { runCodingFlow(item, enable = true) },
+                                        ) {
+                                            Icon(Icons.Rounded.Build, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Backup & Enable")
+                                        }
                                     }
                                 }
                             }
