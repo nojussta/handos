@@ -3,18 +3,18 @@
 Cargo.lock
 
 # Android / Gradle
-android/.gradle/
-android/local.properties
-android/build/
-android/app/build/
-android/.idea/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/build/
+apps/android/app/build/
+apps/android/.idea/
 *.iml
 *.apk
 *.aab
 
 # iOS / Xcode
-ios/build/
-ios/DerivedData/
+apps/ios/build/
+apps/ios/DerivedData/
 *.xcworkspace/xcuserdata/
 
 # Handos runtime data

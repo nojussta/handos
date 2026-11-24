@@ -5,13 +5,13 @@ use std::path::Path;
 
 /// Built-in curated presets bundled into `handos-core` for zero-setup use on mobile.
 pub fn builtin_presets() -> Vec<CodingPreset> {
-    let raw = include_str!("../../presets/builtin_presets.json");
+    let raw = include_str!("../../../config/presets/builtin_presets.json");
     serde_json::from_str(raw).expect("builtin_presets.json must be valid JSON")
 }
 
 /// Built-in binary ECU coding schemas (byte offsets + bitmasks) bundled into `handos-core`.
 pub fn builtin_ecu_schemas() -> Vec<EcuCodingSchema> {
-    let raw = include_str!("../../presets/ecu_schemas.json");
+    let raw = include_str!("../../../config/presets/ecu_schemas.json");
     serde_json::from_str(raw).expect("ecu_schemas.json must be valid JSON")
 }
 
