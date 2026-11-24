@@ -1,0 +1,42 @@
+name: Build Android APK
+description: Builds libhandos_core.so via cargo-ndk and compiles the Android APK.
+inputs:
+  variant:
+    description: Gradle build variant (Debug or Release)
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-rust
+      with:
+        targets: aarch64-linux-android,armv7-linux-androideabi
+        components: ""
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - uses: android-actions/setup-android@v3
+
+    - name: Install Android NDK & cargo-ndk
+      shell: bash
+      run: |
+        sdkmanager "ndk;27.1.12297006"
+        cargo install cargo-ndk --locked
+
+    - name: Build libhandos_core.so
+      shell: bash
+      env:
+        ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
+      run: |
+        cargo ndk -t arm64-v8a -t armeabi-v7a -o android/app/src/main/jniLibs build --release -p handos-core
+
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: "8.10.2"
+
+    - name: Build ${{ inputs.variant }} APK
+      shell: bash
+      working-directory: android
+      run: gradle assemble${{ inputs.variant }} --no-daemon

@@ -1,0 +1,24 @@
+name: Setup Rust Toolchain
+description: Installs Rust toolchain with optional Android targets and configures cargo cache.
+inputs:
+  targets:
+    description: Comma-separated extra rustup targets (e.g. aarch64-linux-android)
+    required: false
+    default: ""
+  components:
+    description: Comma-separated rustup components
+    required: false
+    default: "clippy,rustfmt"
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.targets }}
+        components: ${{ inputs.components }}
+
+    - name: Cache Cargo registry and build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: true
