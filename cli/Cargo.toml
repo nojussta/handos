@@ -1,0 +1,9 @@
+[package]
+name = "handos-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+handos-core = { path = "../core" }
+serde_json.workspace = true
