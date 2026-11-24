@@ -1,0 +1,160 @@
+use handos_core::fsw_psw::{parse_sp_daten_defs, FswPswFile};
+use handos_core::{
+    builtin_ecu_schemas, builtin_presets, parse_ncsdummy_xml, BackupManager, Chassis, Ds2Packet,
+    EcuInfo, KwpPacket, NettodatImage, PresetChange, SchemaRegistry,
+};
+use tempfile::TempDir;
+
+#[test]
+fn parses_and_roundtrips_fsw_psw_trc() {
+    let raw = "\
+// BMW FSW_PSW.TRC
+SIDEMARKER_US
+\tnicht_aktiv
+BLINKIMPULS_WARNBLK
+\twert_01
+";
+    let mut parsed = FswPswFile::parse(raw).unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed.get_single("SIDEMARKER_US"), Some("nicht_aktiv"));
+    assert_eq!(parsed.get_single("BLINKIMPULS_WARNBLK"), Some("wert_01"));
+
+    let diffs = parsed
+        .apply_preset_changes(&[PresetChange {
+            parameter: "SIDEMARKER_US".to_string(),
+            value: "aktiv".to_string(),
+            aliases: vec![],
+        }])
+        .unwrap();
+    assert_eq!(diffs.len(), 1);
+    assert_eq!(diffs[0].old_value, "nicht_aktiv");
+    assert_eq!(diffs[0].new_value, "aktiv");
+
+    let serialized = parsed.to_trc_string();
+    let reparsed = FswPswFile::parse(&serialized).unwrap();
+    assert_eq!(reparsed.get_single("SIDEMARKER_US"), Some("aktiv"));
+}
+
+#[test]
+fn resolves_parameter_aliases_across_coding_indices() {
+    let mut parsed = FswPswFile::parse("DOPPELBLINKIMPULS_WARNBLK\n\tnicht_aktiv\n").unwrap();
+    let diffs = parsed
+        .apply_preset_changes(&[PresetChange {
+            parameter: "BLINKIMPULS_WARNBLK".to_string(),
+            value: "aktiv".to_string(),
+            aliases: vec!["DOPPELBLINKIMPULS_WARNBLK".to_string()],
+        }])
+        .unwrap();
+    assert_eq!(diffs.len(), 1);
+    assert_eq!(diffs[0].parameter, "DOPPELBLINKIMPULS_WARNBLK");
+    assert_eq!(
+        parsed.get_single("DOPPELBLINKIMPULS_WARNBLK"),
+        Some("aktiv")
+    );
+}
+
+#[test]
+fn saves_lists_and_loads_backups() {
+    let dir = TempDir::new().unwrap();
+    let mgr = BackupManager::new(dir.path()).unwrap();
+    let trc = FswPswFile::parse("MSA_MEMORY\n\tnicht_aktiv\n").unwrap();
+
+    let saved = mgr.save_backup("WBAVA31080NL54321", "IHKA", &trc).unwrap();
+    let list = mgr.list_backups("WBAVA31080NL54321").unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].ecu, "IHKA");
+
+    let loaded = mgr.load_backup(&saved.path).unwrap();
+    assert_eq!(loaded, trc);
+}
+
+#[test]
+fn builtin_presets_support_e46_e87_and_e90() {
+    let presets = builtin_presets();
+    let e46 = presets.iter().find(|p| p.id == "e46_usdm_corners").unwrap();
+    let e8x_e9x = presets
+        .iter()
+        .find(|p| p.id == "e8x_e9x_usdm_corners")
+        .unwrap();
+
+    assert!(e46.supports_chassis(&Chassis::E46));
+    assert!(!e46.supports_chassis(&Chassis::E87));
+
+    assert!(e8x_e9x.supports_chassis(&Chassis::E87));
+    assert!(e8x_e9x.supports_chassis(&Chassis::E90));
+    assert!(e8x_e9x.supports_chassis(&Chassis::E84));
+}
+
+#[test]
+fn parses_sp_daten_definitions() {
+    let sample = include_str!("../../presets/sp_daten_sample.txt");
+    let defs = parse_sp_daten_defs(sample);
+    assert!(defs.len() >= 5);
+    assert_eq!(defs[0].name, "SIDEMARKER_US");
+    assert_eq!(defs[0].possible_values, vec!["nicht_aktiv", "aktiv"]);
+}
+
+#[test]
+fn nettodat_bitmask_codec_preserves_unrelated_bits() {
+    let schemas = builtin_ecu_schemas();
+    let frm_schema = schemas.iter().find(|s| s.ecu_name == "FRM").unwrap();
+
+    // Byte 0 has unrelated upper bits (0xF0), byte 1 has wert_01 (0x01) + upper 0xA0, byte 2 has 0x00
+    let mut image = NettodatImage::from_single_block(0x3000, vec![0xF0, 0xA1, 0x00]);
+    let mut fsw = frm_schema.decode(&image).unwrap();
+    assert_eq!(fsw.get_single("SIDEMARKER_US"), Some("nicht_aktiv"));
+    assert_eq!(fsw.get_single("PWM_SL_V_BEI_AKTIVEN_AL"), Some("wert_01"));
+
+    fsw.set("SIDEMARKER_US", "aktiv");
+    fsw.set("PWM_SL_V_BEI_AKTIVEN_AL", "wert_04");
+    let diffs = frm_schema.encode_onto(&mut image, &fsw).unwrap();
+    assert_eq!(diffs.len(), 2);
+
+    // Verify unrelated upper bits 0xF0 and 0xA0 were preserved untouched
+    assert_eq!(image.blocks[&0x3000], vec![0xF1, 0xA4, 0x00]);
+
+    let trc_dump = image.to_nettodat_trc();
+    let reparsed = NettodatImage::parse_nettodat_trc(&trc_dump).unwrap();
+    assert_eq!(reparsed, image);
+}
+
+#[test]
+fn kwp2000_and_ds2_packets_encode_decode_with_checksum() {
+    let kwp = KwpPacket::new(0x72, vec![0x1A, 0x90]);
+    let raw_kwp = kwp.encode().unwrap();
+    let decoded_kwp = KwpPacket::decode(&raw_kwp).unwrap();
+    assert_eq!(decoded_kwp, kwp);
+
+    let ds2 = Ds2Packet::new(0xD0, vec![0x00, 0x01]);
+    let raw_ds2 = ds2.encode().unwrap();
+    let decoded_ds2 = Ds2Packet::decode(&raw_ds2).unwrap();
+    assert_eq!(decoded_ds2, ds2);
+}
+
+#[test]
+fn schema_registry_dynamically_imports_xml_and_resolves_by_coding_index() {
+    let dir = TempDir::new().unwrap();
+    let xml = r#"
+<module ecu="FRM" coding_index="FRM3_E89.C32">
+  <function name="SIDEMARKER_US" block="0x3000" offset="0" mask="0x01">
+    <param name="nicht_aktiv" value="0x00"/>
+    <param name="aktiv" value="0x01"/>
+  </function>
+</module>
+"#;
+    std::fs::write(dir.path().join("frm3.xml"), xml).unwrap();
+    let registry = SchemaRegistry::load(dir.path()).unwrap();
+
+    let ecu = EcuInfo {
+        address: 0x72,
+        name: "FRM".to_string(),
+        description: "Footwell Module 3".to_string(),
+        coding_index: "FRM3_E89.C32".to_string(),
+    };
+    let resolved = registry.resolve_for_ecu(&ecu).unwrap();
+    assert_eq!(resolved.coding_index_prefix, "FRM3_E89.C32");
+
+    let parsed = parse_ncsdummy_xml(xml).unwrap();
+    assert_eq!(parsed.params.len(), 1);
+    assert_eq!(parsed.params[0].parameter, "SIDEMARKER_US");
+}
