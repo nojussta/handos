@@ -321,3 +321,27 @@ fn data_logger_exports_csv_file() {
     let appended = std::fs::read_to_string(&session_csv).unwrap();
     assert_eq!(appended.lines().count(), 3);
 }
+
+#[test]
+fn refuses_unknown_parameter_and_empty_backup() {
+    let mut trc = FswPswFile::parse("SIDEMARKER_US\n\tnicht_aktiv\n").unwrap();
+    let err = trc
+        .apply_preset_changes(&[PresetChange {
+            parameter: "NON_EXISTENT_PARAM".to_string(),
+            value: "aktiv".to_string(),
+            off_value: "nicht_aktiv".to_string(),
+            aliases: vec![],
+        }])
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        handos_core::HandosError::UnknownParameter { .. }
+    ));
+
+    let dir = TempDir::new().unwrap();
+    let mgr = BackupManager::new(dir.path()).unwrap();
+    let empty_trc = FswPswFile::new();
+    assert!(mgr
+        .save_backup("WBAVA31080NL54321", "FRM", &empty_trc)
+        .is_err());
+}

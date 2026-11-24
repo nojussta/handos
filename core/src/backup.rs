@@ -49,9 +49,24 @@ impl BackupManager {
             }
             seq += 1;
         };
-        fs::write(&path, data.to_trc_string()).map_err(|e| {
+        let serialized = data.to_trc_string();
+        if serialized.trim().is_empty() {
+            return Err(HandosError::Backup(
+                "refusing to save empty ECU backup".to_string(),
+            ));
+        }
+        fs::write(&path, &serialized).map_err(|e| {
             HandosError::Backup(format!("failed to write backup '{}': {e}", path.display()))
         })?;
+
+        // Verify the backup on disk is readable and matches what we just wrote
+        let reparsed = self.load_backup(&path)?;
+        if reparsed.len() != data.len() {
+            return Err(HandosError::Backup(format!(
+                "backup verification failed for '{}'",
+                path.display()
+            )));
+        }
 
         Ok(BackupEntry {
             vin: safe_vin,

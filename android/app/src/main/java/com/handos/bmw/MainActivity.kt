@@ -499,6 +499,11 @@ fun HandosApp(
                     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                         Text(diffPreview, modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall)
                     }
+                    Text(
+                        "Safety: Keep ignition ON, do not unplug adapter, and ensure battery >= 11.5V (12.0V+ recommended).",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             },
             confirmButton = {
@@ -1038,25 +1043,26 @@ fun HandosApp(
                                         }
                                         Text(item.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Spacer(Modifier.height(4.dp))
+                                        val lowVoltage = (scannedVehicle?.batteryVoltage ?: 12.6) < 11.5
                                         if (isEnabled) {
                                             OutlinedButton(
-                                                enabled = !busy && codingDialog == null,
+                                                enabled = !busy && codingDialog == null && !lowVoltage,
                                                 shape = RoundedCornerShape(12.dp),
                                                 onClick = { pendingConfirm = PendingConfirmation(item, enable = false) },
                                             ) {
                                                 Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                                                 Spacer(Modifier.width(6.dp))
-                                                Text("Backup & Turn Off")
+                                                Text(if (lowVoltage) "Low Voltage (<11.5V)" else "Backup & Turn Off")
                                             }
                                         } else {
                                             FilledTonalButton(
-                                                enabled = !busy && codingDialog == null,
+                                                enabled = !busy && codingDialog == null && !lowVoltage,
                                                 shape = RoundedCornerShape(12.dp),
                                                 onClick = { pendingConfirm = PendingConfirmation(item, enable = true) },
                                             ) {
                                                 Icon(Icons.Rounded.Build, contentDescription = null, modifier = Modifier.size(18.dp))
                                                 Spacer(Modifier.width(6.dp))
-                                                Text("Backup & Enable")
+                                                Text(if (lowVoltage) "Low Voltage (<11.5V)" else "Backup & Enable")
                                             }
                                         }
                                     }
