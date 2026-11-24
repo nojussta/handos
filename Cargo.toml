@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "core",
-    "sim",
-    "cli",
+    "libs/core",
+    "tools/sim",
+    "apps/cli",
 ]
 
 [workspace.package]

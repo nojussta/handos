@@ -39,7 +39,7 @@ jobs:
           variant: Debug
 
       - name: Rename APK for release
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk handos-android-alpha.apk
+        run: cp apps/android/app/build/outputs/apk/debug/app-debug.apk handos-android-alpha.apk
 
       - uses: actions/upload-artifact@v7
         with:

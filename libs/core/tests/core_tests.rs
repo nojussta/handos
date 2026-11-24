@@ -100,7 +100,7 @@ fn builtin_presets_support_e46_e87_e90_and_f_series() {
 
 #[test]
 fn parses_sp_daten_definitions() {
-    let sample = include_str!("../../presets/sp_daten_sample.txt");
+    let sample = include_str!("../../../config/presets/sp_daten_sample.txt");
     let defs = parse_sp_daten_defs(sample);
     assert!(defs.len() >= 5);
     assert_eq!(defs[0].name, "SIDEMARKER_US");

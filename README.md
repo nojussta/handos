@@ -18,12 +18,12 @@ Handos gives you **one-tap, safety-verified coding presets** (plus an expert `FS
 
 ## Architecture
 
-- [`core/`](core/) (`handos-core`, Rust): Lightweight, memory-safe shared engine compiled to native Android (JNI/UniFFI) and iOS (Swift/UniFFI). Contains MHD WiFi TCP transport, BMW KWP2000/DS2/ENET framing, `FSW_PSW` parser/writer, preset engine, automatic backup manager, and safe coding state machine.
-- [`sim/`](sim/) (`handos-sim`, Rust): Local MHD WiFi + BMW ECU simulator (E46 & E90 ECUs) so you can test every coding, backup, restore, and fault-clearing flow without a physical car.
-- [`cli/`](cli/) (`handos-cli`, Rust): Terminal client for testing `handos-core` directly against `handos-sim` or a real MHD WiFi adapter.
-- [`presets/`](presets/): Curated JSON coding presets and ECU parameter definitions for E46 and E90.
-- [`android/`](android/): Native Android app (Kotlin + Jetpack Compose + Material 3) wired to `handos-core`.
-- [`ios/`](ios/): iOS SwiftUI integration guide & UniFFI binding setup sharing the exact same `handos-core` library.
+- [`libs/core/`](libs/core/) (`handos-core`, Rust): Lightweight, memory-safe shared engine compiled to native Android (JNI/UniFFI) and iOS (Swift/UniFFI). Contains MHD WiFi TCP transport, BMW KWP2000/DS2/ENET framing, `FSW_PSW` parser/writer, preset engine, automatic backup manager, and safe coding state machine.
+- [`tools/sim/`](tools/sim/) (`handos-sim`, Rust): Local MHD WiFi + BMW ECU simulator (E46 & E90 ECUs) so you can test every coding, backup, restore, and fault-clearing flow without a physical car.
+- [`apps/cli/`](apps/cli/) (`handos-cli`, Rust): Terminal client for testing `handos-core` directly against `handos-sim` or a real MHD WiFi adapter.
+- [`config/presets/`](config/presets/): Curated JSON coding presets and ECU parameter definitions for E46, E8x/E9x, and F-Series.
+- [`apps/android/`](apps/android/): Native Android app (Kotlin + Jetpack Compose + Material 3) wired to `handos-core`.
+- [`apps/ios/`](apps/ios/): iOS SwiftUI integration guide & UniFFI binding setup sharing the exact same `handos-core` library.
 
 ## Quick Start (Simulator + CLI)
 
@@ -41,4 +41,4 @@ cargo run -p handos-cli -- --host 127.0.0.1:6801 dtc-read
 cargo run -p handos-cli -- --host 127.0.0.1:6801 dtc-clear
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for protocol details, MHD WiFi framing, and Android/iOS build instructions.
+See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) for protocol details, MHD WiFi framing, and Android/iOS build instructions.

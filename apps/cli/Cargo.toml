@@ -1,12 +1,9 @@
 [package]
-name = "handos-sim"
+name = "handos-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-handos-core = { path = "../core" }
+handos-core = { path = "../../libs/core" }
 serde_json.workspace = true
-
-[dev-dependencies]
-tempfile = "3.14"

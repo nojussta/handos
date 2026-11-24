@@ -31,5 +31,5 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: handos-android-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: apps/android/app/build/outputs/apk/debug/*.apk
           retention-days: 14

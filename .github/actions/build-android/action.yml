@@ -32,7 +32,7 @@ runs:
     - name: Build libhandos_core.so
       shell: bash
       run: |
-        cargo ndk -t arm64-v8a -t armeabi-v7a -o android/app/src/main/jniLibs build --release -p handos-core
+        cargo ndk -t arm64-v8a -t armeabi-v7a -o apps/android/app/src/main/jniLibs build --release -p handos-core
 
     - uses: gradle/actions/setup-gradle@v6
       with:
@@ -40,5 +40,5 @@ runs:
 
     - name: Build ${{ inputs.variant }} APK
       shell: bash
-      working-directory: android
+      working-directory: apps/android
       run: gradle assemble${{ inputs.variant }} --no-daemon --console=plain
