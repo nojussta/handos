@@ -1,9 +1,36 @@
 use crate::error::{HandosError, Result};
 use crate::protocol::{DiagnosticFrame, DEFAULT_MHD_WIFI_HOST, DEFAULT_MHD_WIFI_PORT};
+use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
-/// Abstraction over the physical/network link to the BMW vehicle (MHD WiFi, simulator, etc.).
+/// Supported BMW OBD adapter types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AdapterType {
+    MhdWifi,
+    KdcanUsb,
+}
+
+/// Serial baud/bus mode for standard FTDI K+DCAN USB cables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KdcanProtocolMode {
+    /// D-CAN (500 kbps CAN via 115200 baud FTDI) for 2007+ E8x/E9x/E60/E70.
+    Dcan115200,
+    /// K-Line (10400 baud) for E46 / early E39 / early E90 modules.
+    Kline10400,
+}
+
+impl KdcanProtocolMode {
+    pub fn baud_rate(self) -> u32 {
+        match self {
+            Self::Dcan115200 => 115_200,
+            Self::Kline10400 => 10_400,
+        }
+    }
+}
+
+/// Abstraction over the physical/network link to the BMW vehicle (MHD WiFi, K+DCAN USB, simulator).
 pub trait Transport: Send {
     fn exchange(&mut self, request: &DiagnosticFrame) -> Result<DiagnosticFrame>;
     fn endpoint(&self) -> &str;
@@ -59,5 +86,37 @@ impl Transport for MhdWifiTransport {
 
     fn endpoint(&self) -> &str {
         &self.endpoint
+    }
+}
+
+/// Transport for a standard FTDI K+DCAN USB cable (via USB-C OTG on Android or serial port).
+pub struct KdcanSerialTransport<S: Read + Write + Send> {
+    stream: S,
+    mode: KdcanProtocolMode,
+    label: String,
+}
+
+impl<S: Read + Write + Send> KdcanSerialTransport<S> {
+    pub fn new(stream: S, mode: KdcanProtocolMode, label: impl Into<String>) -> Self {
+        Self {
+            stream,
+            mode,
+            label: label.into(),
+        }
+    }
+
+    pub fn mode(&self) -> KdcanProtocolMode {
+        self.mode
+    }
+}
+
+impl<S: Read + Write + Send> Transport for KdcanSerialTransport<S> {
+    fn exchange(&mut self, request: &DiagnosticFrame) -> Result<DiagnosticFrame> {
+        request.write_to(&mut self.stream)?;
+        DiagnosticFrame::read_from(&mut self.stream)
+    }
+
+    fn endpoint(&self) -> &str {
+        &self.label
     }
 }

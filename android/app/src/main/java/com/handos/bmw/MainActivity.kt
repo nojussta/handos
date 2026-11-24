@@ -127,8 +127,9 @@ fun HandosApp(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
+    var adapterMode by remember { mutableStateOf("mhd_wifi") }
     var host by remember { mutableStateOf(HandosBridge.DEFAULT_MHD_HOST) }
-    var statusText by remember { mutableStateOf("Connect to MHD WiFi or run Demo Simulation.") }
+    var statusText by remember { mutableStateOf("Connect via MHD WiFi or K+DCAN USB, or run Demo Simulation.") }
     var busy by remember { mutableStateOf(false) }
     var demoMode by remember { mutableStateOf(false) }
     var scannedVehicle by remember { mutableStateOf<VehicleUi?>(null) }
@@ -408,14 +409,39 @@ fun HandosApp(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            OutlinedTextField(
-                                value = host,
-                                onValueChange = { host = it },
-                                label = { Text("MHD WiFi Endpoint") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(12.dp),
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                            )
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilterChip(
+                                    selected = adapterMode == "mhd_wifi",
+                                    onClick = { adapterMode = "mhd_wifi" },
+                                    label = { Text("MHD WiFi") },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                FilterChip(
+                                    selected = adapterMode == "kdcan_usb",
+                                    onClick = { adapterMode = "kdcan_usb" },
+                                    label = { Text("K+DCAN USB (OTG)") },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            if (adapterMode == "mhd_wifi") {
+                                OutlinedTextField(
+                                    value = host,
+                                    onValueChange = { host = it },
+                                    label = { Text("MHD WiFi Endpoint") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            } else {
+                                Text(
+                                    "Connect a standard FTDI K+DCAN cable via USB-C OTG.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             Button(
                                 enabled = !busy,
                                 shape = RoundedCornerShape(14.dp),
@@ -424,6 +450,11 @@ fun HandosApp(
                                     .height(50.dp),
                                 onClick = {
                                     demoMode = false
+                                    if (adapterMode == "kdcan_usb") {
+                                        val probe = KdcanUsbManager.probeOrRequestPermission(context)
+                                        statusText = probe.message
+                                        return@Button
+                                    }
                                     onBindWifi()
                                     runNative(
                                         "Scanning vehicle",

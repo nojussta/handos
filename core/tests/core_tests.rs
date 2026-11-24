@@ -1,8 +1,9 @@
 use handos_core::fsw_psw::{parse_sp_daten_defs, FswPswFile};
 use handos_core::{
     builtin_ecu_schemas, builtin_presets, parse_ncsdummy_xml, run_nbt_evo_preflight, BackupManager,
-    Chassis, Ds2Packet, EcuInfo, HeadUnitSshClient, KwpPacket, NettodatImage, PresetChange,
-    SchemaRegistry, VehicleInfo,
+    Chassis, DiagnosticFrame, Ds2Packet, EcuInfo, HeadUnitSshClient, KdcanProtocolMode,
+    KdcanSerialTransport, KwpPacket, NettodatImage, PresetChange, SchemaRegistry, Transport,
+    VehicleInfo,
 };
 use tempfile::TempDir;
 
@@ -241,4 +242,35 @@ fn nbt_evo_preflight_passes_when_all_requirements_met() {
         Some(dir.path()),
     );
     assert!(report.is_ready());
+}
+
+struct LoopbackSerial(std::collections::VecDeque<u8>);
+
+impl std::io::Read for LoopbackSerial {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+
+impl std::io::Write for LoopbackSerial {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.extend(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn kdcan_serial_transport_exchanges_frames() {
+    let mut transport = KdcanSerialTransport::new(
+        LoopbackSerial(std::collections::VecDeque::new()),
+        KdcanProtocolMode::Dcan115200,
+        "usb://ftdi",
+    );
+    assert_eq!(transport.mode().baud_rate(), 115_200);
+    let req = DiagnosticFrame::diagnostic(0x72, vec![0x21, 0x01]);
+    let resp = transport.exchange(&req).unwrap();
+    assert_eq!(resp, req);
 }

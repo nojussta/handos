@@ -28,5 +28,7 @@ pub use presets::{
 pub use protocol::{DiagnosticFrame, PayloadType, DEFAULT_MHD_WIFI_HOST, DEFAULT_MHD_WIFI_PORT};
 pub use schema_registry::{parse_ncsdummy_xml, SchemaRegistry};
 pub use session::{HandosSession, MIN_SAFE_CODING_VOLTAGE};
-pub use transport::{MhdWifiTransport, Transport};
+pub use transport::{
+    AdapterType, KdcanProtocolMode, KdcanSerialTransport, MhdWifiTransport, Transport,
+};
 pub use types::*;
