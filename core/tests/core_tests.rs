@@ -24,6 +24,7 @@ BLINKIMPULS_WARNBLK
         .apply_preset_changes(&[PresetChange {
             parameter: "SIDEMARKER_US".to_string(),
             value: "aktiv".to_string(),
+            off_value: "nicht_aktiv".to_string(),
             aliases: vec![],
         }])
         .unwrap();
@@ -43,6 +44,7 @@ fn resolves_parameter_aliases_across_coding_indices() {
         .apply_preset_changes(&[PresetChange {
             parameter: "BLINKIMPULS_WARNBLK".to_string(),
             value: "aktiv".to_string(),
+            off_value: "nicht_aktiv".to_string(),
             aliases: vec!["DOPPELBLINKIMPULS_WARNBLK".to_string()],
         }])
         .unwrap();

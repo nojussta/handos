@@ -42,6 +42,14 @@ pub fn scan_vehicle_json(host: &str, backup_dir: &str) -> String {
 }
 
 pub fn apply_preset_json(host: &str, preset_id: &str, backup_dir: &str) -> String {
+    set_preset_enabled_json(host, preset_id, backup_dir, true)
+}
+
+pub fn revert_preset_json(host: &str, preset_id: &str, backup_dir: &str) -> String {
+    set_preset_enabled_json(host, preset_id, backup_dir, false)
+}
+
+fn set_preset_enabled_json(host: &str, preset_id: &str, backup_dir: &str, enable: bool) -> String {
     let res = (|| {
         let preset = builtin_presets()
             .into_iter()
@@ -50,7 +58,21 @@ pub fn apply_preset_json(host: &str, preset_id: &str, backup_dir: &str) -> Strin
         let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
-        session.apply_preset_safely(&preset)
+        if enable {
+            session.apply_preset_safely(&preset)
+        } else {
+            session.revert_preset_safely(&preset)
+        }
+    })();
+    to_json_response(res)
+}
+
+pub fn preset_statuses_json(host: &str, backup_dir: &str) -> String {
+    let res = (|| {
+        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let backups = BackupManager::new(backup_dir)?;
+        let mut session = HandosSession::new(transport, backups);
+        session.check_presets_status()
     })();
     to_json_response(res)
 }
@@ -186,6 +208,34 @@ mod android_jni {
         let p = get_str(&mut env, preset_id);
         let d = get_str(&mut env, backup_dir);
         let out = apply_preset_json(&h, &p, &d);
+        env.new_string(out).unwrap().into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeRevertPreset(
+        mut env: JNIEnv,
+        _class: JClass,
+        host: JString,
+        preset_id: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let h = get_str(&mut env, host);
+        let p = get_str(&mut env, preset_id);
+        let d = get_str(&mut env, backup_dir);
+        let out = revert_preset_json(&h, &p, &d);
+        env.new_string(out).unwrap().into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativePresetStatuses(
+        mut env: JNIEnv,
+        _class: JClass,
+        host: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let h = get_str(&mut env, host);
+        let d = get_str(&mut env, backup_dir);
+        let out = preset_statuses_json(&h, &d);
         env.new_string(out).unwrap().into_raw()
     }
 

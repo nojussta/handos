@@ -112,4 +112,28 @@ fn f30_coding_flow_succeeds() {
         let report = session.apply_preset_safely(preset).unwrap();
         assert!(report.verified);
     }
+
+    let statuses = session.check_presets_status().unwrap();
+    assert!(
+        statuses
+            .iter()
+            .find(|s| s.id == "fxx_digital_speedo")
+            .unwrap()
+            .enabled
+    );
+
+    let speedo = presets
+        .iter()
+        .find(|p| p.id == "fxx_digital_speedo")
+        .unwrap();
+    let revert_report = session.revert_preset_safely(speedo).unwrap();
+    assert!(revert_report.verified);
+    let statuses_after = session.check_presets_status().unwrap();
+    assert!(
+        !statuses_after
+            .iter()
+            .find(|s| s.id == "fxx_digital_speedo")
+            .unwrap()
+            .enabled
+    );
 }

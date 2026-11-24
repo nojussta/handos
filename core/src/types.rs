@@ -132,14 +132,28 @@ pub struct Dtc {
     pub active: bool,
 }
 
+fn default_off_value() -> String {
+    "nicht_aktiv".to_string()
+}
+
 /// A single parameter override within a coding preset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PresetChange {
     pub parameter: String,
     pub value: String,
+    /// Value restored when turning this coding option off (defaults to `"nicht_aktiv"`).
+    #[serde(default = "default_off_value")]
+    pub off_value: String,
     /// Optional fallback parameter names used across different coding indices.
     #[serde(default)]
     pub aliases: Vec<String>,
+}
+
+/// Whether a coding preset is currently enabled in the connected vehicle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PresetStatus {
+    pub id: String,
+    pub enabled: bool,
 }
 
 /// Curated or user-defined one-tap coding preset.

@@ -1,11 +1,13 @@
 use crate::backup::BackupManager;
 use crate::error::{HandosError, Result};
 use crate::fsw_psw::FswPswFile;
+use crate::presets::builtin_presets;
 use crate::protocol::{sid, DiagnosticFrame};
 use crate::transport::Transport;
 use crate::types::{
-    CodingDiff, CodingPreset, CodingReport, Dtc, EcuInfo, PresetChange, VehicleInfo,
+    CodingDiff, CodingPreset, CodingReport, Dtc, EcuInfo, PresetChange, PresetStatus, VehicleInfo,
 };
+use std::collections::HashMap;
 
 /// Minimum battery voltage (in volts) required to perform ECU writes safely.
 pub const MIN_SAFE_CODING_VOLTAGE: f32 = 11.5;
@@ -77,12 +79,58 @@ impl<T: Transport> HandosSession<T> {
         current.apply_preset_changes(&preset.changes)
     }
 
-    /// Safely applies a curated `CodingPreset` to the vehicle:
-    /// - Checks chassis match and battery voltage
-    /// - Reads current ECU data and saves an automatic backup
-    /// - Writes modified `FSW_PSW.MAN` to the ECU
-    /// - Re-reads the ECU and verifies all modified parameters
+    /// Safely applies a curated `CodingPreset` (enable = true) or reverts it (enable = false).
     pub fn apply_preset_safely(&mut self, preset: &CodingPreset) -> Result<CodingReport> {
+        self.set_preset_enabled_safely(preset, true)
+    }
+
+    /// Safely disables/reverts a curated `CodingPreset` back to its `off_value` defaults.
+    pub fn revert_preset_safely(&mut self, preset: &CodingPreset) -> Result<CodingReport> {
+        self.set_preset_enabled_safely(preset, false)
+    }
+
+    /// Checks which compatible presets are currently enabled in the connected vehicle.
+    pub fn check_presets_status(&mut self) -> Result<Vec<PresetStatus>> {
+        let vehicle = match &self.cached_vehicle {
+            Some(v) => v.clone(),
+            None => self.scan_vehicle()?,
+        };
+        let mut ecu_traces: HashMap<String, FswPswFile> = HashMap::new();
+        let mut statuses = Vec::new();
+
+        for preset in builtin_presets() {
+            if !preset.supports_chassis(&vehicle.chassis) {
+                continue;
+            }
+            let Some(ecu) = vehicle
+                .ecus
+                .iter()
+                .find(|e| e.name.eq_ignore_ascii_case(&preset.target_ecu))
+            else {
+                continue;
+            };
+            if !ecu_traces.contains_key(&ecu.name) {
+                let trace = self.read_ecu_coding(ecu)?;
+                ecu_traces.insert(ecu.name.clone(), trace);
+            }
+            let enabled = ecu_traces
+                .get(&ecu.name)
+                .map(|t| t.is_preset_enabled(&preset.changes))
+                .unwrap_or(false);
+            statuses.push(PresetStatus {
+                id: preset.id,
+                enabled,
+            });
+        }
+
+        Ok(statuses)
+    }
+
+    fn set_preset_enabled_safely(
+        &mut self,
+        preset: &CodingPreset,
+        enable: bool,
+    ) -> Result<CodingReport> {
         let vehicle = match &self.cached_vehicle {
             Some(v) => v.clone(),
             None => self.scan_vehicle()?,
@@ -114,7 +162,7 @@ impl<T: Transport> HandosSession<T> {
                 ))
             })?;
 
-        self.apply_changes_safely(&vehicle.vin, &ecu, &preset.changes)
+        self.apply_changes_mode_safely(&vehicle.vin, &ecu, &preset.changes, enable)
     }
 
     /// Safely applies arbitrary `PresetChange` edits to an ECU with backup + verify.
@@ -124,11 +172,25 @@ impl<T: Transport> HandosSession<T> {
         ecu: &EcuInfo,
         changes: &[PresetChange],
     ) -> Result<CodingReport> {
+        self.apply_changes_mode_safely(vin, ecu, changes, true)
+    }
+
+    fn apply_changes_mode_safely(
+        &mut self,
+        vin: &str,
+        ecu: &EcuInfo,
+        changes: &[PresetChange],
+        enable: bool,
+    ) -> Result<CodingReport> {
         let original = self.read_ecu_coding(ecu)?;
         let backup_entry = self.backups.save_backup(vin, &ecu.name, &original)?;
 
         let mut modified = original;
-        let diffs = modified.apply_preset_changes(changes)?;
+        let diffs = if enable {
+            modified.apply_preset_changes(changes)?
+        } else {
+            modified.revert_preset_changes(changes)?
+        };
         if diffs.is_empty() {
             return Ok(CodingReport {
                 ecu: ecu.name.clone(),

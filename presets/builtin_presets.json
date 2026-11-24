@@ -28,6 +28,7 @@
       {
         "parameter": "BLINKIMPULS_WARNBLK",
         "value": "wert_02",
+        "off_value": "wert_01",
         "aliases": ["DOPPELBLINKIMPULS_WARNBLK"]
       }
     ]
@@ -66,6 +67,7 @@
       {
         "parameter": "PWM_SL_V_BEI_AKTIVEN_AL",
         "value": "wert_04",
+        "off_value": "wert_01",
         "aliases": ["PWM_BLK_V_FKT_SIDEMARK"]
       }
     ]
@@ -113,6 +115,7 @@
       {
         "parameter": "BC_DIGITAL_V_KORREKTUR",
         "value": "nicht_aktiv",
+        "off_value": "aktiv",
         "aliases": []
       }
     ]
@@ -197,6 +200,7 @@
       {
         "parameter": "SPEEDLOCK_X_KMH_MAX",
         "value": "werte=FF",
+        "off_value": "werte=03",
         "aliases": ["SPEEDLOCK_X_KMH_MIN"]
       }
     ]

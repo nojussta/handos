@@ -119,20 +119,47 @@ impl FswPswFile {
     /// Applies preset changes (resolving aliases if the primary parameter name is absent
     /// in this ECU's coding index) and returns the list of actual diffs.
     pub fn apply_preset_changes(&mut self, changes: &[PresetChange]) -> Result<Vec<CodingDiff>> {
+        self.apply_preset_changes_mode(changes, true)
+    }
+
+    /// Reverts preset changes back to each parameter's `off_value`.
+    pub fn revert_preset_changes(&mut self, changes: &[PresetChange]) -> Result<Vec<CodingDiff>> {
+        self.apply_preset_changes_mode(changes, false)
+    }
+
+    /// Returns true if every parameter in `changes` already equals its enabled `value`.
+    pub fn is_preset_enabled(&self, changes: &[PresetChange]) -> bool {
+        !changes.is_empty()
+            && changes.iter().all(|c| {
+                let name = self.resolve_parameter_name(&c.parameter, &c.aliases);
+                self.get_single(&name) == Some(c.value.as_str())
+            })
+    }
+
+    fn apply_preset_changes_mode(
+        &mut self,
+        changes: &[PresetChange],
+        enable: bool,
+    ) -> Result<Vec<CodingDiff>> {
         let mut diffs = Vec::new();
         for change in changes {
             let resolved_name = self.resolve_parameter_name(&change.parameter, &change.aliases);
+            let target_val = if enable {
+                &change.value
+            } else {
+                &change.off_value
+            };
             let old_val = self
                 .get_single(&resolved_name)
                 .unwrap_or("<unset>")
                 .to_string();
 
-            if old_val != change.value {
-                self.set(resolved_name.clone(), change.value.clone());
+            if old_val != *target_val {
+                self.set(resolved_name.clone(), target_val.clone());
                 diffs.push(CodingDiff {
                     parameter: resolved_name,
                     old_value: old_val,
-                    new_value: change.value.clone(),
+                    new_value: target_val.clone(),
                 });
             }
         }
