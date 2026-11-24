@@ -5,9 +5,9 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Chassis {
     E46,
-    /// 1-Series (E81 / E82 / E87 / E88) — shares FRM, CAS, IHKA, KOMBI with E9x.
+    /// 1-Series (E81 / E82 / E87 / E88), shares FRM, CAS, IHKA, KOMBI with E9x.
     E87,
-    /// 3-Series (E90 / E91 / E92 / E93) — shares FRM, CAS, IHKA, KOMBI with E8x.
+    /// 3-Series (E90 / E91 / E92 / E93), shares FRM, CAS, IHKA, KOMBI with E8x.
     E90,
     E60,
     E84,

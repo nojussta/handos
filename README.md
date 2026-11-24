@@ -1,4 +1,4 @@
-# Handos — Handy BMW Coding Tools
+# Handos - Handy BMW Coding Tools
 
 **Handos** replaces the legacy Windows laptop stack (**INPA + NCS Expert + NCS Dummy**) with a lightweight, safety-first mobile application for **Android** (and future **iOS**) using the **MHD Universal WiFi adapter**.
 
@@ -18,9 +18,9 @@ Handos gives you **one-tap, safety-verified coding presets** (plus an expert `FS
 
 ## Architecture
 
-- [`core/`](core/) (`handos-core` — Rust): Lightweight, memory-safe shared engine compiled to native Android (JNI/UniFFI) and iOS (Swift/UniFFI). Contains MHD WiFi TCP transport, BMW KWP2000/DS2/ENET framing, `FSW_PSW` parser/writer, preset engine, automatic backup manager, and safe coding state machine.
-- [`sim/`](sim/) (`handos-sim` — Rust): Local MHD WiFi + BMW ECU simulator (E46 & E90 ECUs) so you can test every coding, backup, restore, and fault-clearing flow without a physical car.
-- [`cli/`](cli/) (`handos-cli` — Rust): Terminal client for testing `handos-core` directly against `handos-sim` or a real MHD WiFi adapter.
+- [`core/`](core/) (`handos-core`, Rust): Lightweight, memory-safe shared engine compiled to native Android (JNI/UniFFI) and iOS (Swift/UniFFI). Contains MHD WiFi TCP transport, BMW KWP2000/DS2/ENET framing, `FSW_PSW` parser/writer, preset engine, automatic backup manager, and safe coding state machine.
+- [`sim/`](sim/) (`handos-sim`, Rust): Local MHD WiFi + BMW ECU simulator (E46 & E90 ECUs) so you can test every coding, backup, restore, and fault-clearing flow without a physical car.
+- [`cli/`](cli/) (`handos-cli`, Rust): Terminal client for testing `handos-core` directly against `handos-sim` or a real MHD WiFi adapter.
 - [`presets/`](presets/): Curated JSON coding presets and ECU parameter definitions for E46 and E90.
 - [`android/`](android/): Native Android app (Kotlin + Jetpack Compose + Material 3) wired to `handos-core`.
 - [`ios/`](ios/): iOS SwiftUI integration guide & UniFFI binding setup sharing the exact same `handos-core` library.
