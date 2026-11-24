@@ -20,5 +20,10 @@ object HandosBridge {
     external fun nativePresetStatuses(host: String, backupDir: String): String
     external fun nativeReadDtcs(host: String, backupDir: String): String
     external fun nativeClearDtcs(host: String, backupDir: String): String
-    external fun nativeImportSchema(schemasDir: String, fileName: String, content: String): String
+    external fun nativeListBackups(vin: String, backupDir: String): String
+    external fun nativeRestoreBackup(host: String, ecuName: String, backupPath: String, backupDir: String): String
+    external fun nativeRunServiceJob(host: String, jobId: String, backupDir: String): String
+    external fun nativeReadTelemetry(host: String, backupDir: String): String
+    external fun nativeReadEcuParams(host: String, ecuName: String, backupDir: String): String
+    external fun nativeSetEcuParam(host: String, ecuName: String, parameter: String, value: String, backupDir: String): String
 }
