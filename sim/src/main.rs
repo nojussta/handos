@@ -25,8 +25,11 @@ fn main() {
         "e46" => SimulatedCar::e46(),
         "e87" => SimulatedCar::e87(),
         "e90" => SimulatedCar::e90(),
+        "f30" => SimulatedCar::f30(),
         other => {
-            eprintln!("Unknown chassis '{other}', defaulting to e90 (supported: e46, e87, e90)");
+            eprintln!(
+                "Unknown chassis '{other}', defaulting to e90 (supported: e46, e87, e90, f30)"
+            );
             SimulatedCar::e90()
         }
     };

@@ -139,6 +139,60 @@ impl SimulatedCar {
         }
     }
 
+    pub fn f30() -> Self {
+        let mut coding_data = HashMap::new();
+        coding_data.insert(
+            0x40,
+            FswPswFile::parse(
+                "TCM_MSA_MEMORY\n\tnicht_aktiv\nTCM_MSA_DEFAULT_OFF\n\tnicht_aktiv\nASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN\n\tnicht_aktiv\nSIDEMARKER_US\n\tnicht_aktiv\n",
+            )
+            .unwrap(),
+        );
+        coding_data.insert(
+            0x60,
+            FswPswFile::parse("BC_DIGITAL_V\n\tnicht_aktiv\n").unwrap(),
+        );
+        coding_data.insert(
+            0x63,
+            FswPswFile::parse("SPEEDLOCK_X_KMH_MAX\n\twerte=03\n").unwrap(),
+        );
+
+        let mut dtcs = HashMap::new();
+        dtcs.insert(0x40, vec![]);
+        dtcs.insert(0x60, vec![]);
+        dtcs.insert(0x63, vec![]);
+
+        Self {
+            vehicle: VehicleInfo {
+                vin: "WBA3B1C50DF123456".to_string(),
+                chassis: Chassis::F30,
+                battery_voltage: 12.7,
+                ecus: vec![
+                    EcuInfo {
+                        address: 0x40,
+                        name: "FEM_BODY".to_string(),
+                        description: "Front Electronic Module".to_string(),
+                        coding_index: "FEM_01.001".to_string(),
+                    },
+                    EcuInfo {
+                        address: 0x60,
+                        name: "KOMBI".to_string(),
+                        description: "Instrument Cluster".to_string(),
+                        coding_index: "KOMBI_F.001".to_string(),
+                    },
+                    EcuInfo {
+                        address: 0x63,
+                        name: "HU_NBT".to_string(),
+                        description: "Head Unit NBT".to_string(),
+                        coding_index: "HU_NBT.001".to_string(),
+                    },
+                ],
+            },
+            coding_data,
+            dtcs,
+        }
+    }
+
     pub fn handle_frame(&mut self, frame: &DiagnosticFrame) -> DiagnosticFrame {
         if frame.payload.is_empty() {
             return DiagnosticFrame::new(

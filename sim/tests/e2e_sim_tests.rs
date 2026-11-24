@@ -77,3 +77,26 @@ fn e46_low_voltage_blocks_coding() {
     let err = session.apply_preset_safely(&preset).unwrap_err();
     assert!(matches!(err, HandosError::LowVoltage { .. }));
 }
+
+#[test]
+fn f30_coding_flow_succeeds() {
+    let addr = spawn_simulator("127.0.0.1:0", SimulatedCar::f30()).unwrap();
+    let transport = MhdWifiTransport::connect(&addr, Duration::from_secs(3)).unwrap();
+    let backup_dir = TempDir::new().unwrap();
+    let backups = BackupManager::new(backup_dir.path()).unwrap();
+    let mut session = HandosSession::new(transport, backups);
+
+    let vehicle = session.scan_vehicle().unwrap();
+    assert_eq!(vehicle.chassis, Chassis::F30);
+
+    let presets = builtin_presets();
+    for id in [
+        "fxx_start_stop_memory",
+        "fxx_digital_speedo",
+        "fxx_video_in_motion",
+    ] {
+        let preset = presets.iter().find(|p| p.id == id).unwrap();
+        let report = session.apply_preset_safely(preset).unwrap();
+        assert!(report.verified);
+    }
+}
