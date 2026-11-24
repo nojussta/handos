@@ -1,5 +1,6 @@
 package com.handos.bmw
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -7,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,10 +21,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.handos.bmw.ui.theme.HandosTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -168,6 +176,8 @@ fun HandosApp(
     var isLogging by remember { mutableStateOf(false) }
     var latestTelemetry by remember { mutableStateOf<TelemetryUi?>(null) }
     val recordedSamples = remember { mutableStateListOf<TelemetryUi>() }
+    var activeLogFile by remember { mutableStateOf<File?>(null) }
+    var savedSampleCount by remember { mutableIntStateOf(0) }
 
     val codingItems = remember {
         listOf(
@@ -846,36 +856,90 @@ fun HandosApp(
                     }
                 }
                 2 -> {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),
                             onClick = { isLogging = !isLogging },
                         ) {
                             Icon(if (isLogging) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (isLogging) "Stop Logging" else "Start Logging")
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (isLogging) "Stop" else "Start")
                         }
                         OutlinedButton(
-                            enabled = recordedSamples.isNotEmpty(),
+                            enabled = recordedSamples.size > savedSampleCount,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 val dir = File(logsDir).apply { mkdirs() }
-                                val outFile = File(dir, "handos_log_${System.currentTimeMillis()}.csv")
-                                val csv = buildString {
-                                    appendLine("timestamp_ms,battery_voltage,rpm,coolant_temp_c,oil_temp_c,boost_kpa,intake_temp_c,vehicle_speed_kmh")
-                                    recordedSamples.forEach { s ->
+                                val target = activeLogFile ?: File(dir, "handos_log_${System.currentTimeMillis()}.csv")
+                                val needsHeader = !target.exists() || target.length() == 0L
+                                val chunk = buildString {
+                                    if (needsHeader) {
+                                        appendLine("timestamp_ms,battery_voltage,rpm,coolant_temp_c,oil_temp_c,boost_kpa,intake_temp_c,vehicle_speed_kmh")
+                                    }
+                                    recordedSamples.drop(savedSampleCount).forEach { s ->
                                         appendLine("${s.timestampMs},${"%.2f".format(s.batteryVoltage)},${s.rpm},${"%.1f".format(s.coolantTempC)},${"%.1f".format(s.oilTempC)},${"%.1f".format(s.boostKpa)},${"%.1f".format(s.intakeTempC)},${"%.1f".format(s.speedKmh)}")
                                     }
                                 }
-                                outFile.writeText(csv)
-                                statusText = "Saved ${recordedSamples.size} samples to ${outFile.name}"
+                                target.appendText(chunk)
+                                activeLogFile = target
+                                savedSampleCount = recordedSamples.size
+                                statusText = "Saved ${recordedSamples.size} total samples to ${target.name}"
                             },
                         ) {
                             Icon(Icons.Rounded.Save, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Save CSV (${recordedSamples.size})")
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (activeLogFile == null) "Save (${recordedSamples.size})" else "Append (${recordedSamples.size - savedSampleCount})")
+                        }
+                        if (!isLogging && (recordedSamples.isNotEmpty() || activeLogFile != null)) {
+                            OutlinedButton(
+                                shape = RoundedCornerShape(12.dp),
+                                onClick = {
+                                    recordedSamples.clear()
+                                    latestTelemetry = null
+                                    activeLogFile = null
+                                    savedSampleCount = 0
+                                    statusText = "Cleared logged data."
+                                },
+                            ) {
+                                Text("Clear")
+                            }
+                        }
+                    }
+
+                    activeLogFile?.let { file ->
+                        ElevatedCard(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Session Log File", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(file.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                TextButton(onClick = {
+                                    try {
+                                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                            setDataAndType(uri, "text/csv")
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: ActivityNotFoundException) {
+                                        statusText = "No CSV viewer app installed. File at: ${file.absolutePath}"
+                                    }
+                                }) {
+                                    Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Open")
+                                }
+                            }
                         }
                     }
 
@@ -883,7 +947,7 @@ fun HandosApp(
                     if (t == null) {
                         ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Tap Start Logging to stream live Boost, Oil Temp, Coolant Temp, RPM, and Voltage.",
+                                "Tap Start to stream live Boost, Oil Temp, Coolant Temp, RPM, and Voltage.",
                                 modifier = Modifier.padding(16.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -900,6 +964,11 @@ fun HandosApp(
                             "Vehicle Speed" to "${"%.0f".format(t.speedKmh)} km/h",
                         )
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (recordedSamples.size >= 2) {
+                                item {
+                                    TelemetryComparisonChart(samples = recordedSamples.takeLast(80))
+                                }
+                            }
                             items(metrics) { (label, value) ->
                                 ElevatedCard(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                                     Row(
@@ -1009,6 +1078,64 @@ fun HandosApp(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun TelemetryComparisonChart(samples: List<TelemetryUi>) {
+    val boostColor = Color(0xFF4C9AFF)
+    val rpmColor = Color(0xFF7FD4C1)
+    val oilColor = Color(0xFFFFB74D)
+    val coolantColor = Color(0xFFFF6B6B)
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
+
+    ElevatedCard(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "Comparison Graph (Normalized)",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp),
+            ) {
+                if (samples.size < 2) return@Canvas
+                // Draw subtle horizontal grid lines
+                listOf(0.25f, 0.5f, 0.75f).forEach { frac ->
+                    val y = size.height * frac
+                    drawLine(gridColor.copy(alpha = 0.4f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                }
+
+                fun drawSeries(values: List<Double>, minVal: Double, maxVal: Double, color: Color) {
+                    val span = (maxVal - minVal).coerceAtLeast(1.0)
+                    val path = Path()
+                    values.forEachIndexed { idx, v ->
+                        val x = (idx.toFloat() / (values.size - 1).coerceAtLeast(1)) * size.width
+                        val norm = ((v - minVal) / span).toFloat().coerceIn(0f, 1f)
+                        val y = size.height - norm * (size.height - 8f) - 4f
+                        if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(path, color = color, style = Stroke(width = 3.5f, cap = StrokeCap.Round))
+                }
+
+                drawSeries(samples.map { it.boostKpa }, 90.0, 220.0, boostColor)
+                drawSeries(samples.map { it.rpm.toDouble() }, 600.0, 6500.0, rpmColor)
+                drawSeries(samples.map { it.oilTempC }, 60.0, 130.0, oilColor)
+                drawSeries(samples.map { it.coolantTempC }, 60.0, 120.0, coolantColor)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Boost", color = boostColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                Text("RPM", color = rpmColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                Text("Oil °C", color = oilColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                Text("Coolant °C", color = coolantColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
             }
         }
     }
