@@ -1,7 +1,8 @@
 use handos_core::fsw_psw::{parse_sp_daten_defs, FswPswFile};
 use handos_core::{
-    builtin_ecu_schemas, builtin_presets, parse_ncsdummy_xml, BackupManager, Chassis, Ds2Packet,
-    EcuInfo, KwpPacket, NettodatImage, PresetChange, SchemaRegistry,
+    builtin_ecu_schemas, builtin_presets, parse_ncsdummy_xml, run_nbt_evo_preflight, BackupManager,
+    Chassis, Ds2Packet, EcuInfo, HeadUnitSshClient, KwpPacket, NettodatImage, PresetChange,
+    SchemaRegistry, VehicleInfo,
 };
 use tempfile::TempDir;
 
@@ -166,4 +167,76 @@ fn schema_registry_dynamically_imports_xml_and_resolves_by_coding_index() {
     let parsed = parse_ncsdummy_xml(xml).unwrap();
     assert_eq!(parsed.params.len(), 1);
     assert_eq!(parsed.params[0].parameter, "SIDEMARKER_US");
+}
+
+struct MockSsh {
+    open: bool,
+}
+
+impl HeadUnitSshClient for MockSsh {
+    fn is_port_open(&self, _address: &str) -> bool {
+        self.open
+    }
+    fn backup_remote_file(
+        &mut self,
+        _remote_path: &str,
+        _local_backup_dir: &std::path::Path,
+    ) -> handos_core::Result<()> {
+        Ok(())
+    }
+    fn upload_file(
+        &mut self,
+        _local_path: &std::path::Path,
+        _remote_path: &str,
+    ) -> handos_core::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn nbt_evo_preflight_blocks_unsafe_or_incomplete_targets() {
+    let dir = TempDir::new().unwrap();
+    let vehicle = VehicleInfo {
+        vin: "WBA3B1C50DF123456".to_string(),
+        chassis: Chassis::E90,
+        battery_voltage: 11.4,
+        ecus: vec![EcuInfo {
+            address: 0x63,
+            name: "HU_NBT".to_string(),
+            description: "NBT".to_string(),
+            coding_index: "HU_NBT.C01".to_string(),
+        }],
+    };
+    let report = run_nbt_evo_preflight(
+        &vehicle,
+        &MockSsh { open: false },
+        "169.254.199.99:22",
+        Some(dir.path()),
+    );
+    assert!(!report.is_ready());
+    assert_eq!(report.blocking_reasons.len(), 5);
+}
+
+#[test]
+fn nbt_evo_preflight_passes_when_all_requirements_met() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("manifest.json"), "[]").unwrap();
+    let vehicle = VehicleInfo {
+        vin: "WBA3B1C50DF123456".to_string(),
+        chassis: Chassis::F30,
+        battery_voltage: 12.6,
+        ecus: vec![EcuInfo {
+            address: 0x63,
+            name: "HU_NBT".to_string(),
+            description: "NBT EVO ID6".to_string(),
+            coding_index: "HU_NBT2_EVO_ID6".to_string(),
+        }],
+    };
+    let report = run_nbt_evo_preflight(
+        &vehicle,
+        &MockSsh { open: true },
+        "169.254.199.99:22",
+        Some(dir.path()),
+    );
+    assert!(report.is_ready());
 }

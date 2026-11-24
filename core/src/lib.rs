@@ -3,6 +3,7 @@ pub mod error;
 pub mod ffi;
 pub mod fsw_psw;
 pub mod kwp_ds2;
+pub mod nbt_evo_aa;
 pub mod nettodat;
 pub mod presets;
 pub mod protocol;
@@ -15,6 +16,10 @@ pub use backup::BackupManager;
 pub use error::{HandosError, Result};
 pub use fsw_psw::{parse_sp_daten_defs, FswPswFile, SpDatenParamDef};
 pub use kwp_ds2::{kwp_jobs, Ds2Packet, KwpPacket};
+pub use nbt_evo_aa::{
+    install_nbt_evo_android_auto, run_nbt_evo_preflight, HeadUnitSshClient, NbtEvoInstallReport,
+    NbtEvoPreflight, TcpSshProbe, DEFAULT_NBT_EVO_HOST, NBT_EVO_MIN_VOLTAGE,
+};
 pub use nettodat::{CodingParamSchema, EcuCodingSchema, NettodatImage};
 pub use presets::{
     builtin_ecu_schemas, builtin_presets, load_presets_from_file, presets_for_chassis,
