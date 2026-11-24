@@ -1,0 +1,10 @@
+# Sample SP-Daten / NCS Dummy parameter definitions for Handos
+SIDEMARKER_US | USDM Front Corner Sidemarker Lights | nicht_aktiv, aktiv
+BLK_V_GED_ALS_PARKLICHT | Front Turn Signals Dimmed as Parking Lights | nicht_aktiv, aktiv
+BLINKIMPULS_WARNBLK | Hazard Flasher Impulse Pattern (wert_02 = Double) | wert_01, wert_02
+DOPPELBLINKIMPULS_WARNBLK | Double-Impulse Hazard Warning Blink | nicht_aktiv, aktiv
+MSA_MEMORY | Remember Auto Start/Stop State Across Ignition | nicht_aktiv, aktiv
+BC_DIGITAL_V | Digital Speedometer in Instrument Cluster | nicht_aktiv, aktiv
+BC_DIGITAL_V_KORREKTUR | Apply Speedometer Offset Correction | aktiv, nicht_aktiv
+KOMFORTOEFFNUNG_FB | Comfort Opening via Key Fob | nicht_aktiv, aktiv
+KOMFORTSCHLIESSUNG_FB | Comfort Closing via Key Fob | nicht_aktiv, aktiv

@@ -1,0 +1,120 @@
+[
+  {
+    "id": "e46_usdm_corners",
+    "title": "USDM Corner Lights (E46)",
+    "description": "Enables US-spec front turn signals as parking/sidemarker lights on E46 LSZ.",
+    "platform_families": ["E46"],
+    "target_ecu": "LSZ",
+    "changes": [
+      {
+        "parameter": "SIDEMARKER_US",
+        "value": "aktiv",
+        "aliases": ["BLK_V_GED_ALS_SIDEMARK"]
+      },
+      {
+        "parameter": "BLK_V_GED_ALS_PARKLICHT",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e46_double_hazard",
+    "title": "Double Hazard Lights (E46)",
+    "description": "Changes hazard flasher pattern to BMW double-impulse blink on E46 LSZ.",
+    "platform_families": ["E46"],
+    "target_ecu": "LSZ",
+    "changes": [
+      {
+        "parameter": "BLINKIMPULS_WARNBLK",
+        "value": "wert_02",
+        "aliases": ["DOPPELBLINKIMPULS_WARNBLK"]
+      }
+    ]
+  },
+  {
+    "id": "e46_comfort_windows",
+    "title": "Remote Comfort Windows (E46)",
+    "description": "Hold unlock/lock on key fob to open/close windows and sunroof via GM5.",
+    "platform_families": ["E46"],
+    "target_ecu": "GM5",
+    "changes": [
+      {
+        "parameter": "KOMFORTOEFFNUNG_FB",
+        "value": "aktiv",
+        "aliases": []
+      },
+      {
+        "parameter": "KOMFORTSCHLIESSUNG_FB",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_usdm_corners",
+    "title": "USDM Corner Lights (1-Series / 3-Series)",
+    "description": "Enables US-spec dimmed front turn signals as sidemarkers on E8x/E9x FRM/NFRM.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "FRM",
+    "changes": [
+      {
+        "parameter": "SIDEMARKER_US",
+        "value": "aktiv",
+        "aliases": ["SIDEMARKER_US_MIT_FRA_V", "SL_V_PO_ALS_FBL"]
+      },
+      {
+        "parameter": "PWM_SL_V_BEI_AKTIVEN_AL",
+        "value": "wert_04",
+        "aliases": ["PWM_BLK_V_FKT_SIDEMARK"]
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_double_hazard",
+    "title": "Double Hazard Lights (1-Series / 3-Series)",
+    "description": "Enables double-impulse hazard warning blink on E8x/E9x FRM/NFRM.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "FRM",
+    "changes": [
+      {
+        "parameter": "DOPPELBLINKIMPULS_WARNBLK",
+        "value": "aktiv",
+        "aliases": ["BLINKIMPULS_WARNBLK"]
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_start_stop_memory",
+    "title": "Auto Start/Stop Memory (1-Series / 3-Series)",
+    "description": "Remembers last Auto Start/Stop button state across ignition cycles on E8x/E9x IHKA.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "IHKA",
+    "changes": [
+      {
+        "parameter": "MSA_MEMORY",
+        "value": "aktiv",
+        "aliases": ["MSA_TASTER_MEM", "TCM_MSA_MEMORY"]
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_digital_speedo",
+    "title": "Digital Speedometer (1-Series / 3-Series)",
+    "description": "Adds true/uncorrected digital speed readout to E8x/E9x KOMBI cluster BC.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "KOMBI",
+    "changes": [
+      {
+        "parameter": "BC_DIGITAL_V",
+        "value": "aktiv",
+        "aliases": []
+      },
+      {
+        "parameter": "BC_DIGITAL_V_KORREKTUR",
+        "value": "nicht_aktiv",
+        "aliases": []
+      }
+    ]
+  }
+]

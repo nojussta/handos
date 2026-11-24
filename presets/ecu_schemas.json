@@ -1,0 +1,42 @@
+[
+  {
+    "ecu_name": "FRM",
+    "coding_index_prefix": "FRM2_E89",
+    "params": [
+      {
+        "parameter": "SIDEMARKER_US",
+        "block_id": 12288,
+        "byte_offset": 0,
+        "bitmask": 1,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      },
+      {
+        "parameter": "PWM_SL_V_BEI_AKTIVEN_AL",
+        "block_id": 12288,
+        "byte_offset": 1,
+        "bitmask": 15,
+        "values": { "wert_01": 1, "wert_02": 2, "wert_03": 3, "wert_04": 4 }
+      },
+      {
+        "parameter": "DOPPELBLINKIMPULS_WARNBLK",
+        "block_id": 12288,
+        "byte_offset": 2,
+        "bitmask": 2,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      }
+    ]
+  },
+  {
+    "ecu_name": "IHKA",
+    "coding_index_prefix": "IHKA_E89",
+    "params": [
+      {
+        "parameter": "MSA_MEMORY",
+        "block_id": 12288,
+        "byte_offset": 0,
+        "bitmask": 4,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      }
+    ]
+  }
+]
