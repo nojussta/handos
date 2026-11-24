@@ -1,0 +1,25 @@
+# Rust
+/target/
+Cargo.lock
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/build/
+android/app/build/
+android/.idea/
+*.iml
+*.apk
+*.aab
+
+# iOS / Xcode
+ios/build/
+ios/DerivedData/
+*.xcworkspace/xcuserdata/
+
+# Handos runtime data
+backups/
+logs/
+*.trc
+*.man
+.DS_Store
