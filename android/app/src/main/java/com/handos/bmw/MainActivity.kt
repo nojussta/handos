@@ -15,10 +15,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.DirectionsCar
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -33,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.handos.bmw.ui.theme.HandosTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -44,6 +49,7 @@ data class CodingItemUi(
     val ecu: String,
     val title: String,
     val description: String,
+    val demoDiff: String,
 )
 
 data class VehicleUi(
@@ -59,6 +65,23 @@ data class DtcUi(
     val code: String,
     val description: String,
     val active: Boolean,
+)
+
+enum class StepState { Pending, Active, Done, Failed }
+
+data class CodingFlowStep(
+    val label: String,
+    val state: StepState = StepState.Pending,
+)
+
+data class CodingDialogState(
+    val title: String,
+    val ecu: String,
+    val steps: List<CodingFlowStep>,
+    val diffs: List<String> = emptyList(),
+    val backupPath: String? = null,
+    val error: String? = null,
+    val finished: Boolean = false,
 )
 
 class MainActivity : ComponentActivity() {
@@ -103,29 +126,31 @@ fun HandosApp(
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
     var host by remember { mutableStateOf(HandosBridge.DEFAULT_MHD_HOST) }
-    var statusText by remember { mutableStateOf("Ready. Connect phone to MHD WiFi AP.") }
+    var statusText by remember { mutableStateOf("Connect to MHD WiFi or run Demo Simulation.") }
     var busy by remember { mutableStateOf(false) }
+    var demoMode by remember { mutableStateOf(false) }
     var scannedVehicle by remember { mutableStateOf<VehicleUi?>(null) }
     var showAllVehicles by remember { mutableStateOf(false) }
     var dtcs by remember { mutableStateOf<List<DtcUi>>(emptyList()) }
+    var codingDialog by remember { mutableStateOf<CodingDialogState?>(null) }
 
     val codingItems = remember {
         listOf(
-            CodingItemUi("e46_usdm_corners", "E46", "LSZ", "USDM Corner Lights", "Front turn signals as sidemarkers"),
-            CodingItemUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights", "Double-impulse hazard flash"),
-            CodingItemUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows", "Hold fob to open/close windows"),
-            CodingItemUi("e8x_e9x_usdm_corners", "E8xE9x", "FRM", "USDM Corner Lights", "Dimmed front turn signals as sidemarkers"),
-            CodingItemUi("e8x_e9x_double_hazard", "E8xE9x", "FRM", "Double Hazard Lights", "Double-impulse hazard blink"),
-            CodingItemUi("e8x_e9x_start_stop_memory", "E8xE9x", "IHKA", "Auto Start/Stop Memory", "Remember last Start/Stop state"),
-            CodingItemUi("e8x_e9x_digital_speedo", "E8xE9x", "KOMBI", "Digital Speedometer", "Uncorrected digital speed in cluster"),
-            CodingItemUi("fxx_start_stop_memory", "Fxx", "FEM_BODY", "Auto Start/Stop Memory", "Remember last Start/Stop state across restarts"),
-            CodingItemUi("fxx_start_stop_off_default", "Fxx", "FEM_BODY", "Auto Start/Stop Off by Default", "Default Start/Stop to OFF on every start"),
-            CodingItemUi("fxx_digital_speedo", "Fxx", "KOMBI", "Digital Speedometer", "Show digital speed readout in cluster"),
-            CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock", "Fold side mirrors on key fob / comfort lock"),
-            CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers", "Enable US-spec front amber sidemarkers"),
-            CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion", "Remove iDrive video speed lock"),
-            CodingItemUi("fxx_nbt_evo_aa_prep", "Fxx", "HU_NBT", "NBT EVO Android Auto Prep", "Enable CarLife slot & WLAN flags for NBT EVO AA"),
-            CodingItemUi("fxx_nbt_evo_carplay_fullscreen", "Fxx", "HU_NBT", "NBT EVO CarPlay Fullscreen", "Enable fullscreen CarPlay on NBT EVO ID5/ID6"),
+            CodingItemUi("e46_usdm_corners", "E46", "LSZ", "USDM Corner Lights", "Front turn signals as sidemarkers", "SIDEMARKER_US: nicht_aktiv -> aktiv"),
+            CodingItemUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights", "Double-impulse hazard flash", "BLINKIMPULS_WARNBLK: wert_01 -> wert_02"),
+            CodingItemUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows", "Hold fob to open/close windows", "KOMFORTSCHLIESSUNG_FB: nicht_aktiv -> aktiv"),
+            CodingItemUi("e8x_e9x_usdm_corners", "E8xE9x", "FRM", "USDM Corner Lights", "Dimmed front turn signals as sidemarkers", "SIDEMARKER_US: nicht_aktiv -> aktiv"),
+            CodingItemUi("e8x_e9x_double_hazard", "E8xE9x", "FRM", "Double Hazard Lights", "Double-impulse hazard blink", "DOPPELBLINKIMPULS_WARNBLK: nicht_aktiv -> aktiv"),
+            CodingItemUi("e8x_e9x_start_stop_memory", "E8xE9x", "IHKA", "Auto Start/Stop Memory", "Remember last Start/Stop state", "MSA_MEMORY: nicht_aktiv -> aktiv"),
+            CodingItemUi("e8x_e9x_digital_speedo", "E8xE9x", "KOMBI", "Digital Speedometer", "Uncorrected digital speed in cluster", "BC_DIGITAL_V: nicht_aktiv -> aktiv"),
+            CodingItemUi("fxx_start_stop_memory", "Fxx", "FEM_BODY", "Auto Start/Stop Memory", "Remember last Start/Stop state across restarts", "TCM_MSA_MEMORY: nicht_aktiv -> aktiv"),
+            CodingItemUi("fxx_start_stop_off_default", "Fxx", "FEM_BODY", "Auto Start/Stop Off by Default", "Default Start/Stop to OFF on every start", "TCM_MSA_DEFAULT_OFF: nicht_aktiv -> aktiv"),
+            CodingItemUi("fxx_digital_speedo", "Fxx", "KOMBI", "Digital Speedometer", "Show digital speed readout in cluster", "BC_DIGITAL_V: nicht_aktiv -> aktiv"),
+            CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock", "Fold side mirrors on key fob / comfort lock", "ASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN: nicht_aktiv -> aktiv"),
+            CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers", "Enable US-spec front amber sidemarkers", "SIDEMARKER_US: nicht_aktiv -> aktiv"),
+            CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion", "Remove iDrive video speed lock", "SPEEDLOCK_X_KMH_MAX: werte=03 -> werte=FF"),
+            CodingItemUi("fxx_nbt_evo_aa_prep", "Fxx", "HU_NBT", "NBT EVO Android Auto Prep", "Enable CarLife slot & WLAN flags for NBT EVO AA", "CARLIFE: nicht_aktiv -> aktiv"),
+            CodingItemUi("fxx_nbt_evo_carplay_fullscreen", "Fxx", "HU_NBT", "NBT EVO CarPlay Fullscreen", "Enable fullscreen CarPlay on NBT EVO ID5/ID6", "CARPLAY_FULLSCREEN: nicht_aktiv -> aktiv"),
         )
     }
 
@@ -141,13 +166,115 @@ fun HandosApp(
         }
     }
 
+    fun startDemoSimulation() {
+        demoMode = true
+        val demoVehicle = VehicleUi(
+            vin = "WBA3B1C50DF123456",
+            chassis = "F30 (3-Series) [DEMO]",
+            platformFamily = "Fxx",
+            batteryVoltage = 12.74,
+            ecus = setOf("FEM_BODY", "KOMBI", "HU_NBT"),
+        )
+        scannedVehicle = demoVehicle
+        dtcs = listOf(
+            DtcUi("FEM_BODY", "8040B9", "Deactivation of terminal 30B: top startability limit reached", active = false),
+            DtcUi("HU_NBT", "B7F8C3", "WLAN antenna open circuit (historic)", active = false),
+        )
+        statusText = "Demo simulation active: ${demoVehicle.chassis} (${demoVehicle.vin}). Try Coding & Faults tabs."
+        selectedTab = 1
+    }
+
+    fun runCodingFlow(item: CodingItemUi) {
+        val baseSteps = listOf(
+            CodingFlowStep("Checking battery voltage & ${item.ecu} link", StepState.Active),
+            CodingFlowStep("Reading current ${item.ecu} coding (FSW_PSW.TRC)"),
+            CodingFlowStep("Saving automatic VIN backup"),
+            CodingFlowStep("Writing modified coding to ${item.ecu}"),
+            CodingFlowStep("Re-reading & verifying changes"),
+        )
+        codingDialog = CodingDialogState(
+            title = item.title,
+            ecu = item.ecu,
+            steps = baseSteps,
+        )
+
+        scope.launch {
+            if (demoMode) {
+                for (i in baseSteps.indices) {
+                    delay(450)
+                    codingDialog = codingDialog?.let { st ->
+                        val updated = st.steps.mapIndexed { idx, s ->
+                            when {
+                                idx <= i -> s.copy(state = StepState.Done)
+                                idx == i + 1 -> s.copy(state = StepState.Active)
+                                else -> s
+                            }
+                        }
+                        st.copy(steps = updated)
+                    }
+                }
+                val vin = scannedVehicle?.vin ?: "DEMO_VIN"
+                val fakeBackup = "$backupDir/$vin/${item.ecu}_demo.trc"
+                codingDialog = codingDialog?.copy(
+                    diffs = listOf(item.demoDiff),
+                    backupPath = fakeBackup,
+                    finished = true,
+                )
+                statusText = "Demo coded ${item.title} (verified)."
+                return@launch
+            }
+
+            if (!HandosBridge.isNativeLoaded) {
+                codingDialog = codingDialog?.copy(
+                    steps = baseSteps.mapIndexed { idx, s ->
+                        if (idx == 0) s.copy(state = StepState.Failed) else s
+                    },
+                    error = "libhandos_core.so not loaded.",
+                    finished = true,
+                )
+                return@launch
+            }
+
+            val raw = withContext(Dispatchers.IO) {
+                HandosBridge.nativeApplyPreset(host, item.id, backupDir)
+            }
+            val json = JSONObject(raw)
+            if (json.optBoolean("ok", false)) {
+                val data = json.optJSONObject("data")
+                val diffsArr = data?.optJSONArray("applied_diffs") ?: JSONArray()
+                val diffs = List(diffsArr.length()) { i ->
+                    val d = diffsArr.getJSONObject(i)
+                    "${d.optString("parameter")}: ${d.optString("old_value")} -> ${d.optString("new_value")}"
+                }
+                val bPath = data?.optString("backup_path")
+                codingDialog = codingDialog?.copy(
+                    steps = baseSteps.map { it.copy(state = StepState.Done) },
+                    diffs = diffs,
+                    backupPath = bPath,
+                    finished = true,
+                )
+                statusText = "Coded ${item.title} safely and verified."
+            } else {
+                val errMsg = json.optString("error", "Unknown error")
+                codingDialog = codingDialog?.copy(
+                    steps = baseSteps.mapIndexed { idx, s ->
+                        if (idx == 0) s.copy(state = StepState.Failed) else s
+                    },
+                    error = errMsg,
+                    finished = true,
+                )
+                statusText = "Error: $errMsg"
+            }
+        }
+    }
+
     fun runNative(
         actionName: String,
         onSuccess: ((Any?) -> Unit)? = null,
         block: () -> String,
     ) {
         if (!HandosBridge.isNativeLoaded) {
-            statusText = "$actionName: libhandos_core.so not bundled yet (build with cargo-ndk)."
+            statusText = "$actionName: libhandos_core.so not bundled yet."
             return
         }
         scope.launch {
@@ -166,17 +293,25 @@ fun HandosApp(
         }
     }
 
+    codingDialog?.let { dlg ->
+        CodingProgressDialog(
+            state = dlg,
+            onDismiss = { codingDialog = null },
+        )
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        text = "handos",
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
+                title = { Text(text = "handos", fontWeight = FontWeight.Bold) },
                 actions = {
+                    if (demoMode) {
+                        AssistChip(
+                            onClick = { demoMode = false; scannedVehicle = null; dtcs = emptyList(); statusText = "Exited demo mode." },
+                            label = { Text("DEMO") },
+                        )
+                    }
                     IconButton(onClick = onToggleTheme) {
                         Icon(
                             imageVector = if (darkTheme) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
@@ -264,6 +399,7 @@ fun HandosApp(
                                     .fillMaxWidth()
                                     .height(50.dp),
                                 onClick = {
+                                    demoMode = false
                                     onBindWifi()
                                     runNative(
                                         "Scanning vehicle",
@@ -292,6 +428,19 @@ fun HandosApp(
                                 Icon(Icons.Rounded.DirectionsCar, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
                                 Text("Connect & Scan Vehicle")
+                            }
+
+                            OutlinedButton(
+                                enabled = !busy,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                onClick = { startDemoSimulation() },
+                            ) {
+                                Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Run Demo Simulation (F30)")
                             }
                         }
                     }
@@ -397,13 +546,9 @@ fun HandosApp(
                                     )
                                     Spacer(Modifier.height(4.dp))
                                     FilledTonalButton(
-                                        enabled = !busy,
+                                        enabled = !busy && codingDialog == null,
                                         shape = RoundedCornerShape(12.dp),
-                                        onClick = {
-                                            runNative("Applying ${item.title}") {
-                                                HandosBridge.nativeApplyPreset(host, item.id, backupDir)
-                                            }
-                                        },
+                                        onClick = { runCodingFlow(item) },
                                     ) {
                                         Icon(Icons.Rounded.Build, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
@@ -424,6 +569,14 @@ fun HandosApp(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),
                             onClick = {
+                                if (demoMode) {
+                                    dtcs = listOf(
+                                        DtcUi("FEM_BODY", "8040B9", "Deactivation of terminal 30B: top startability limit reached", active = false),
+                                        DtcUi("HU_NBT", "B7F8C3", "WLAN antenna open circuit (historic)", active = false),
+                                    )
+                                    statusText = "Demo: loaded ${dtcs.size} fault code(s)."
+                                    return@Button
+                                }
                                 runNative(
                                     "Reading fault codes",
                                     onSuccess = { data ->
@@ -452,6 +605,11 @@ fun HandosApp(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),
                             onClick = {
+                                if (demoMode) {
+                                    dtcs = emptyList()
+                                    statusText = "Demo: cleared all fault codes."
+                                    return@OutlinedButton
+                                }
                                 runNative(
                                     "Clearing fault codes",
                                     onSuccess = { dtcs = emptyList() },
@@ -536,6 +694,91 @@ fun HandosApp(
             }
         }
     }
+}
+
+@Composable
+fun CodingProgressDialog(
+    state: CodingDialogState,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (state.finished) onDismiss() },
+        title = {
+            Text(
+                "${state.title} (${state.ecu})",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                state.steps.forEach { step ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        when (step.state) {
+                            StepState.Pending -> Icon(
+                                Icons.Rounded.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            StepState.Active -> CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            StepState.Done -> Icon(
+                                Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            StepState.Failed -> Icon(
+                                Icons.Rounded.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Text(step.label, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                if (state.diffs.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Applied Changes:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    state.diffs.forEach { diff ->
+                        Text(diff, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                state.backupPath?.let { path ->
+                    Text(
+                        "Backup: $path",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                state.error?.let { err ->
+                    Text(
+                        err,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = state.finished,
+                onClick = onDismiss,
+            ) {
+                Text("Done")
+            }
+        },
+    )
 }
 
 @Preview(showBackground = true)
