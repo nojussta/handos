@@ -164,6 +164,27 @@ private fun parseTelemetryCsv(csv: String): List<TelemetryUi> {
     return result
 }
 
+private fun friendlyEcuName(ecu: String, advancedMode: Boolean): String {
+    if (advancedMode) {
+        return when (ecu) {
+            "FRM" -> "FRM / NFRM"
+            "HU_NBT" -> "HU_NBT / NBT EVO"
+            else -> ecu
+        }
+    }
+    return when (ecu) {
+        "FEM_BODY" -> "Body Control Module"
+        "FRM" -> "Lighting & Footwell Module"
+        "IHKA" -> "Climate Control"
+        "KOMBI" -> "Instrument Cluster"
+        "HU_NBT" -> "iDrive & Head Unit"
+        "LSZ" -> "Light Switch Module"
+        "GM5" -> "Windows & Locking Module"
+        "CAS" -> "Key & Access Module"
+        else -> ecu
+    }
+}
+
 private fun inferPlatformFamily(chassis: String): String {
     val upper = chassis.uppercase()
     return when {
@@ -214,6 +235,8 @@ fun HandosApp(
     var expandedChart by remember { mutableStateOf(false) }
     var showSavedLogsPicker by remember { mutableStateOf(false) }
     var selectedCustomSplashName by remember { mutableStateOf<String?>(null) }
+    var advancedMode by remember { mutableStateOf(false) }
+    var showAdminPanel by remember { mutableStateOf(false) }
 
     val customSplashPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -255,9 +278,14 @@ fun HandosApp(
             CodingItemUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights", "Double-impulse hazard flash", "BLINKIMPULS_WARNBLK", "wert_02", "wert_01"),
             CodingItemUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows", "Hold fob to open/close windows", "KOMFORTSCHLIESSUNG_FB", "aktiv", "nicht_aktiv"),
             CodingItemUi("e46_auto_lock", "E46", "GM5", "Auto-Lock Doors Above 16 km/h", "Automatically lock doors when driving off", "VERRIEGELN_AUT_AB_X_KMH", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e46_one_touch_rear_windows", "E46", "GM5", "One-Touch Rear Windows", "Enable one-touch auto-up on rear windows", "FH_HINTEN_TIPP_ZU", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_usdm_corners", "E8xE9x", "FRM", "USDM Corner Lights", "Dimmed front turn signals as sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_double_hazard", "E8xE9x", "FRM", "Double Hazard Lights", "Double-impulse hazard blink", "DOPPELBLINKIMPULS_WARNBLK", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_welcome_lights", "E8xE9x", "FRM", "Welcome Lights on Unlock", "Turn on angel eyes & tail lights on unlock", "WELCOME_LIGHT_ACTIVE", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e8x_e9x_mirrors_fold_lock", "E8xE9x", "FRM", "Fold Mirrors on Key Fob Lock", "Hold lock on key fob to fold side mirrors", "SPIEGEL_KOMFORT_EINKLAPP", "aktiv", "nicht_aktiv"),
+            CodingItemUi("e8x_e9x_windows_on_door_open", "E8xE9x", "FRM", "Keep Windows Moving on Door Open", "Do not stop window roll-up when opening door", "FH_TUERAUF_STOP_MAUT", "nicht_aktiv", "aktiv"),
+            CodingItemUi("e8x_e9x_one_touch_3_blink", "E8xE9x", "FRM", "3-Blink Lane Change Signals", "Triple-flash turn signals on light tap", "MIND_ANZ_ZYKL_TIPP_BLK", "wert_02", "wert_01"),
+            CodingItemUi("e8x_e9x_key_eject", "E8xE9x", "CAS", "Auto-Eject Key Fob on Engine Off", "Eject key fob automatically when stopping engine", "KOMFORT_EJECT", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_start_stop_memory", "E8xE9x", "IHKA", "Auto Start/Stop Memory", "Remember last Start/Stop state", "MSA_MEMORY", "aktiv", "nicht_aktiv"),
             CodingItemUi("e8x_e9x_digital_speedo", "E8xE9x", "KOMBI", "Digital Speedometer", "Uncorrected digital speed in cluster", "BC_DIGITAL_V", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_start_stop_memory", "Fxx", "FEM_BODY", "Auto Start/Stop Memory", "Remember last Start/Stop state across restarts", "TCM_MSA_MEMORY", "aktiv", "nicht_aktiv"),
@@ -265,8 +293,12 @@ fun HandosApp(
             CodingItemUi("fxx_digital_speedo", "Fxx", "KOMBI", "Digital Speedometer", "Show digital speed readout in cluster", "BC_DIGITAL_V", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock", "Fold side mirrors on key fob / comfort lock", "ASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_door_handle_reverse", "Fxx", "FEM_BODY", "Door Handle LEDs in Reverse", "Light exterior door handles in reverse", "OVT_BEI_RUECKFAHRLICHT", "aktiv", "nicht_aktiv"),
+            CodingItemUi("fxx_windows_on_door_open", "Fxx", "FEM_BODY", "Keep Windows Moving on Door Open", "Do not stop window roll-up when opening door", "FH_TUERAUF_STOP_MAUT", "nicht_aktiv", "aktiv"),
+            CodingItemUi("fxx_one_touch_5_blink", "Fxx", "FEM_BODY", "5-Blink Lane Change Signals", "Increase tap-to-pass turn signals from 3 to 5", "BLINKZYKLEN_ANZAHL_TIPP", "werte=04", "werte=02"),
             CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers", "Enable US-spec front amber sidemarkers", "SIDEMARKER_US", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion", "Remove iDrive video speed lock", "SPEEDLOCK_X_KMH_MAX", "werte=FF", "werte=03"),
+            CodingItemUi("fxx_legal_disclaimer_off", "Fxx", "HU_NBT", "Disable iDrive Startup Disclaimer", "Skip legal warning screen on iDrive boot", "LEGAL_DISCLAIMER_TIME", "kein_ld", "ld_mit_timeout"),
+            CodingItemUi("fxx_acoustic_lock_beep", "Fxx", "HU_NBT", "Beep on Lock / Unlock", "Enable acoustic alarm chirp on lock/unlock", "ACOUSTICAL_LOCK_CONFIRM", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_nbt_evo_aa_prep", "Fxx", "HU_NBT", "NBT EVO Android Auto Prep", "Enable CarLife slot & WLAN flags for NBT EVO AA", "CARLIFE", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_nbt_evo_carplay_fullscreen", "Fxx", "HU_NBT", "NBT EVO CarPlay Fullscreen", "Enable fullscreen CarPlay on NBT EVO ID5/ID6", "CARPLAY_FULLSCREEN", "aktiv", "nicht_aktiv"),
             CodingItemUi("fxx_welcome_emblem_m", "Fxx", "HU_NBT", "Welcome Screen: BMW M Logo", "NBT EVO startup animation: BMW M", "STARTUP_EMBLEM", "variant_01", "variant_00"),
@@ -484,17 +516,26 @@ fun HandosApp(
     }
 
     pendingConfirm?.let { pending ->
-        val diffPreview = if (pending.enable) {
-            "${pending.item.paramName}: ${pending.item.offValue} -> ${pending.item.onValue}"
+        val actionSummary = if (pending.enable) {
+            "Enable ${pending.item.title}"
         } else {
-            "${pending.item.paramName}: ${pending.item.onValue} -> ${pending.item.offValue}"
+            "Turn off ${pending.item.title}"
+        }
+        val diffPreview = if (advancedMode) {
+            if (pending.enable) {
+                "${pending.item.paramName}: ${pending.item.offValue} -> ${pending.item.onValue}"
+            } else {
+                "${pending.item.paramName}: ${pending.item.onValue} -> ${pending.item.offValue}"
+            }
+        } else {
+            actionSummary
         }
         AlertDialog(
             onDismissRequest = { pendingConfirm = null },
             title = { Text(if (pending.enable) "Confirm Coding" else "Confirm Turn Off") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${pending.item.title} (${pending.item.ecu})", fontWeight = FontWeight.SemiBold)
+                    Text("${pending.item.title} (${friendlyEcuName(pending.item.ecu, advancedMode)})", fontWeight = FontWeight.SemiBold)
                     Text("Automatic VIN backup will be saved before writing:", style = MaterialTheme.typography.bodySmall)
                     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                         Text(diffPreview, modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall)
@@ -516,6 +557,52 @@ fun HandosApp(
             },
             dismissButton = {
                 TextButton(onClick = { pendingConfirm = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showAdminPanel) {
+        AlertDialog(
+            onDismissRequest = { showAdminPanel = false },
+            title = { Text("Admin & Preferences") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Advanced / Technical Codes", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (advancedMode) {
+                                    "Showing raw FSW_PSW codes (e.g. BC_DIGITAL_V) and Expert mode."
+                                } else {
+                                    "Showing simple plain-English names for everyday use."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = advancedMode,
+                            onCheckedChange = {
+                                advancedMode = it
+                                if (!it) expertMode = false
+                            },
+                        )
+                    }
+                    HorizontalDivider()
+                    Text("Safety Protections", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "- Minimum Voltage Guard: 11.5V\n- Automatic VIN backup before every write\n- Post-write verification & auto-rollback",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showAdminPanel = false }) { Text("Done") }
             },
         )
     }
@@ -626,6 +713,12 @@ fun HandosApp(
                                 statusText = "Exited demo mode."
                             },
                             label = { Text("DEMO") },
+                        )
+                    }
+                    IconButton(onClick = { showAdminPanel = true }) {
+                        Icon(
+                            imageVector = Icons.Rounded.AdminPanelSettings,
+                            contentDescription = "Admin panel",
                         )
                     }
                     IconButton(onClick = onToggleTheme) {
@@ -904,13 +997,15 @@ fun HandosApp(
                             FilterChip(
                                 selected = !expertMode,
                                 onClick = { expertMode = false },
-                                label = { Text("Curated") },
+                                label = { Text("Coding") },
                             )
-                            FilterChip(
-                                selected = expertMode,
-                                onClick = { expertMode = true },
-                                label = { Text("Expert FSW_PSW") },
-                            )
+                            if (advancedMode) {
+                                FilterChip(
+                                    selected = expertMode,
+                                    onClick = { expertMode = true },
+                                    label = { Text("Expert FSW_PSW") },
+                                )
+                            }
                         }
                         if (!expertMode && scannedVehicle != null) {
                             FilterChip(
@@ -979,7 +1074,11 @@ fun HandosApp(
                                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("NBT EVO Welcome Screen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                             Text(
-                                                "Built-in BMW animations code via OBD (STARTUP_EMBLEM). Custom images require SSH/SFTP access.",
+                                                if (advancedMode) {
+                                                    "Built-in BMW animations code via OBD (STARTUP_EMBLEM). Custom images require SSH/SFTP access."
+                                                } else {
+                                                    "Pick a built-in BMW startup animation. Custom images require SSH access."
+                                                },
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
@@ -1016,53 +1115,86 @@ fun HandosApp(
                                     }
                                 }
                             }
-                            items(visibleCodingItems) { item ->
-                                val isEnabled = enabledPresetIds.contains(item.id)
-                                ElevatedCard(
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(
-                                                item.title,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            AssistChip(
-                                                onClick = {},
-                                                label = { Text(if (isEnabled) "Enabled | ${item.ecu}" else "${item.family} | ${item.ecu}") },
-                                            )
-                                        }
-                                        Text(item.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Spacer(Modifier.height(4.dp))
-                                        val lowVoltage = (scannedVehicle?.batteryVoltage ?: 12.6) < 11.5
-                                        if (isEnabled) {
-                                            OutlinedButton(
-                                                enabled = !busy && codingDialog == null && !lowVoltage,
-                                                shape = RoundedCornerShape(12.dp),
-                                                onClick = { pendingConfirm = PendingConfirmation(item, enable = false) },
+                            val groupedByEcu = visibleCodingItems.groupBy { it.ecu }
+                            groupedByEcu.forEach { (ecu, groupItems) ->
+                                item(key = "header_$ecu") {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = friendlyEcuName(ecu, advancedMode),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Text(
+                                            text = "${groupItems.size} options",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                items(groupItems, key = { it.id }) { item ->
+                                    val isEnabled = enabledPresetIds.contains(item.id)
+                                    ElevatedCard(
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
-                                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                                                Spacer(Modifier.width(6.dp))
-                                                Text(if (lowVoltage) "Low Voltage (<11.5V)" else "Backup & Turn Off")
+                                                Text(
+                                                    item.title,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                AssistChip(
+                                                    onClick = {},
+                                                    label = {
+                                                        Text(
+                                                            if (isEnabled) "Enabled" else item.family,
+                                                        )
+                                                    },
+                                                )
                                             }
-                                        } else {
-                                            FilledTonalButton(
-                                                enabled = !busy && codingDialog == null && !lowVoltage,
-                                                shape = RoundedCornerShape(12.dp),
-                                                onClick = { pendingConfirm = PendingConfirmation(item, enable = true) },
-                                            ) {
-                                                Icon(Icons.Rounded.Build, contentDescription = null, modifier = Modifier.size(18.dp))
-                                                Spacer(Modifier.width(6.dp))
-                                                Text(if (lowVoltage) "Low Voltage (<11.5V)" else "Backup & Enable")
+                                            Text(item.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            if (advancedMode) {
+                                                Text(
+                                                    "${item.ecu} | ${item.paramName}: ${item.offValue} -> ${item.onValue}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                            Spacer(Modifier.height(4.dp))
+                                            val lowVoltage = (scannedVehicle?.batteryVoltage ?: 12.6) < 11.5
+                                            if (isEnabled) {
+                                                OutlinedButton(
+                                                    enabled = !busy && codingDialog == null && !lowVoltage,
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    onClick = { pendingConfirm = PendingConfirmation(item, enable = false) },
+                                                ) {
+                                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(if (lowVoltage) "Low Voltage (<11.5V)" else "Backup & Turn Off")
+                                                }
+                                            } else {
+                                                FilledTonalButton(
+                                                    enabled = !busy && codingDialog == null && !lowVoltage,
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    onClick = { pendingConfirm = PendingConfirmation(item, enable = true) },
+                                                ) {
+                                                    Icon(Icons.Rounded.Build, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(if (lowVoltage) "Low Voltage (<11.5V)" else "Backup & Enable")
+                                                }
                                             }
                                         }
                                     }

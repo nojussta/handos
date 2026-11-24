@@ -354,5 +354,136 @@
         "aliases": []
       }
     ]
+  },
+  {
+    "id": "e46_one_touch_rear_windows",
+    "title": "One-Touch Rear Windows (E46)",
+    "description": "Enables one-touch auto-up on rear power windows via E46 GM5.",
+    "platform_families": ["E46"],
+    "target_ecu": "GM5",
+    "changes": [
+      {
+        "parameter": "FH_HINTEN_TIPP_ZU",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_mirrors_fold_lock",
+    "title": "Fold Mirrors on Key Fob Lock (E8x / E9x)",
+    "description": "Folds side mirrors when holding lock on the key fob via FRM.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "FRM",
+    "changes": [
+      {
+        "parameter": "SPIEGEL_KOMFORT_EINKLAPP",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_windows_on_door_open",
+    "title": "Keep Windows Moving on Door Open (E8x / E9x)",
+    "description": "Prevents opening a door from interrupting one-touch window roll-up.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "FRM",
+    "changes": [
+      {
+        "parameter": "FH_TUERAUF_STOP_MAUT",
+        "value": "nicht_aktiv",
+        "off_value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_one_touch_3_blink",
+    "title": "3-Blink Lane Change Signals (E8x / E9x)",
+    "description": "Sets triple-flash lane change turn signals on FRM.",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "FRM",
+    "changes": [
+      {
+        "parameter": "MIND_ANZ_ZYKL_TIPP_BLK",
+        "value": "wert_02",
+        "off_value": "wert_01",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "e8x_e9x_key_eject",
+    "title": "Auto-Eject Key Fob on Engine Off (E8x / E9x)",
+    "description": "Automatically ejects key fob when stopping the engine (CAS).",
+    "platform_families": ["E8xE9x"],
+    "target_ecu": "CAS",
+    "changes": [
+      {
+        "parameter": "KOMFORT_EJECT",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_windows_on_door_open",
+    "title": "Keep Windows Moving on Door Open (F-Series)",
+    "description": "Prevents opening a door from interrupting window roll-up on FEM_BODY.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "FEM_BODY",
+    "changes": [
+      {
+        "parameter": "FH_TUERAUF_STOP_MAUT",
+        "value": "nicht_aktiv",
+        "off_value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_one_touch_5_blink",
+    "title": "5-Blink Lane Change Signals (F-Series)",
+    "description": "Increases tap-to-pass turn signal flashes from 3 to 5 on FEM_BODY.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "FEM_BODY",
+    "changes": [
+      {
+        "parameter": "BLINKZYKLEN_ANZAHL_TIPP",
+        "value": "werte=04",
+        "off_value": "werte=02",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_legal_disclaimer_off",
+    "title": "Disable iDrive Startup Disclaimer (F-Series)",
+    "description": "Skips the legal warning screen when iDrive boots on HU_NBT.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "LEGAL_DISCLAIMER_TIME",
+        "value": "kein_ld",
+        "off_value": "ld_mit_timeout",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_acoustic_lock_beep",
+    "title": "Beep on Lock / Unlock (F-Series)",
+    "description": "Enables acoustic alarm chirp confirmation on lock/unlock in iDrive.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "ACOUSTICAL_LOCK_CONFIRM",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
   }
 ]

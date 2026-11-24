@@ -146,7 +146,7 @@ impl SimulatedCar {
         coding_data.insert(
             0x40,
             FswPswFile::parse(
-                "TCM_MSA_MEMORY\n\tnicht_aktiv\nTCM_MSA_DEFAULT_OFF\n\tnicht_aktiv\nASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN\n\tnicht_aktiv\nSIDEMARKER_US\n\tnicht_aktiv\nOVT_BEI_RUECKFAHRLICHT\n\tnicht_aktiv\n",
+                "TCM_MSA_MEMORY\n\tnicht_aktiv\nTCM_MSA_DEFAULT_OFF\n\tnicht_aktiv\nASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN\n\tnicht_aktiv\nSIDEMARKER_US\n\tnicht_aktiv\nOVT_BEI_RUECKFAHRLICHT\n\tnicht_aktiv\nFH_TUERAUF_STOP_MAUT\n\taktiv\nBLINKZYKLEN_ANZAHL_TIPP\n\twerte=02\n",
             )
             .unwrap(),
         );
@@ -157,7 +157,7 @@ impl SimulatedCar {
         coding_data.insert(
             0x63,
             FswPswFile::parse(
-                "SPEEDLOCK_X_KMH_MAX\n\twerte=03\nCARLIFE\n\tnicht_aktiv\nWLAN_STATUS\n\tnicht_aktiv\nCARPLAY_FULLSCREEN\n\tnicht_aktiv\nSTARTUP_EMBLEM\n\tvariant_00\n",
+                "SPEEDLOCK_X_KMH_MAX\n\twerte=03\nCARLIFE\n\tnicht_aktiv\nWLAN_STATUS\n\tnicht_aktiv\nCARPLAY_FULLSCREEN\n\tnicht_aktiv\nSTARTUP_EMBLEM\n\tvariant_00\nLEGAL_DISCLAIMER_TIME\n\tld_mit_timeout\nACOUSTICAL_LOCK_CONFIRM\n\tnicht_aktiv\n",
             )
             .unwrap(),
         );

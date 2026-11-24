@@ -109,6 +109,8 @@ fn f30_coding_flow_succeeds() {
         "fxx_nbt_evo_carplay_fullscreen",
         "fxx_welcome_emblem_m",
         "fxx_door_handle_reverse",
+        "fxx_windows_on_door_open",
+        "fxx_legal_disclaimer_off",
     ] {
         let preset = presets.iter().find(|p| p.id == id).unwrap();
         let report = session.apply_preset_safely(preset).unwrap();
