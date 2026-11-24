@@ -1,5 +1,7 @@
 package com.handos.bmw
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
@@ -17,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class PresetUi(
@@ -25,6 +28,13 @@ data class PresetUi(
     val ecu: String,
     val title: String,
     val description: String,
+)
+
+data class DtcUi(
+    val ecu: String,
+    val code: String,
+    val description: String,
+    val active: Boolean,
 )
 
 class MainActivity : ComponentActivity() {
@@ -53,6 +63,7 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
     var host by remember { mutableStateOf(HandosBridge.DEFAULT_MHD_HOST) }
     var statusText by remember { mutableStateOf("Ready. Connect phone to MHD WiFi AP.") }
     var busy by remember { mutableStateOf(false) }
+    var dtcs by remember { mutableStateOf<List<DtcUi>>(emptyList()) }
 
     val schemaPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -89,7 +100,11 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
         )
     }
 
-    fun runNative(actionName: String, block: () -> String) {
+    fun runNative(
+        actionName: String,
+        onSuccess: ((Any?) -> Unit)? = null,
+        block: () -> String,
+    ) {
         if (!HandosBridge.isNativeLoaded) {
             statusText = "$actionName: libhandos_core.so not bundled yet (build with cargo-ndk)."
             return
@@ -99,10 +114,12 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
             statusText = "$actionName..."
             val raw = withContext(Dispatchers.IO) { block() }
             val json = JSONObject(raw)
-            statusText = if (json.optBoolean("ok", false)) {
-                json.opt("data")?.toString() ?: "Done."
+            if (json.optBoolean("ok", false)) {
+                val data = json.opt("data")
+                onSuccess?.invoke(data)
+                statusText = data?.toString() ?: "Done."
             } else {
-                "Error: ${json.optString("error", "Unknown error")}"
+                statusText = "Error: ${json.optString("error", "Unknown error")}"
             }
             busy = false
         }
@@ -201,7 +218,21 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
                         Button(
                             enabled = !busy,
                             onClick = {
-                                runNative("Reading fault codes") {
+                                runNative(
+                                    "Reading fault codes",
+                                    onSuccess = { data ->
+                                        val arr = data as? JSONArray ?: JSONArray()
+                                        dtcs = List(arr.length()) { i ->
+                                            val obj = arr.getJSONObject(i)
+                                            DtcUi(
+                                                ecu = obj.optString("ecu"),
+                                                code = obj.optString("code"),
+                                                description = obj.optString("description"),
+                                                active = obj.optBoolean("active"),
+                                            )
+                                        }
+                                    }
+                                ) {
                                     HandosBridge.nativeReadDtcs(host, backupDir)
                                 }
                             }
@@ -211,12 +242,43 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
                         OutlinedButton(
                             enabled = !busy,
                             onClick = {
-                                runNative("Clearing fault codes") {
+                                runNative(
+                                    "Clearing fault codes",
+                                    onSuccess = { dtcs = emptyList() }
+                                ) {
                                     HandosBridge.nativeClearDtcs(host, backupDir)
                                 }
                             }
                         ) {
                             Text("Clear All Faults")
+                        }
+                    }
+
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(dtcs) { dtc ->
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    val stateLabel = if (dtc.active) "ACTIVE" else "Historic"
+                                    Text(
+                                        "${dtc.ecu} | ${dtc.code} ($stateLabel)",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    if (dtc.description.isNotBlank()) {
+                                        Text(dtc.description, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedButton(onClick = {
+                                        val query = Uri.encode("BMW ${dtc.ecu} ${dtc.code}")
+                                        val intent = Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse("https://www.google.com/search?q=$query")
+                                        )
+                                        context.startActivity(intent)
+                                    }) {
+                                        Text("Search Online")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
