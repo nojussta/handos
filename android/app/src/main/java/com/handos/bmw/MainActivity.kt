@@ -3,11 +3,8 @@ package com.handos.bmw
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,12 +19,20 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class PresetUi(
+data class CodingItemUi(
     val id: String,
     val family: String,
     val ecu: String,
     val title: String,
     val description: String,
+)
+
+data class VehicleUi(
+    val vin: String,
+    val chassis: String,
+    val platformFamily: String,
+    val batteryVoltage: Double,
+    val ecus: Set<String>,
 )
 
 data class DtcUi(
@@ -41,12 +46,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val backupDir = filesDir.resolve("backups").absolutePath
-        val schemasDir = filesDir.resolve("schemas").absolutePath
         setContent {
             MaterialTheme {
                 HandosApp(
                     backupDir = backupDir,
-                    schemasDir = schemasDir,
                     onBindWifi = { MhdWifiBinder.bindProcessToWifi(this) }
                 )
             }
@@ -54,50 +57,60 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun inferPlatformFamily(chassis: String): String {
+    val upper = chassis.uppercase()
+    return when {
+        upper.contains("E46") -> "E46"
+        upper.contains("E8") || upper.contains("E9") -> "E8xE9x"
+        upper.contains("F1") || upper.contains("F2") || upper.contains("F3") || upper.contains("F8") -> "Fxx"
+        else -> "GENERIC"
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) {
+fun HandosApp(backupDir: String, onBindWifi: () -> Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
     var host by remember { mutableStateOf(HandosBridge.DEFAULT_MHD_HOST) }
     var statusText by remember { mutableStateOf("Ready. Connect phone to MHD WiFi AP.") }
     var busy by remember { mutableStateOf(false) }
+    var scannedVehicle by remember { mutableStateOf<VehicleUi?>(null) }
+    var showAllVehicles by remember { mutableStateOf(false) }
     var dtcs by remember { mutableStateOf<List<DtcUi>>(emptyList()) }
 
-    val schemaPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        scope.launch {
-            var imported = 0
-            withContext(Dispatchers.IO) {
-                for (uri in uris) {
-                    val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-                        val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        if (c.moveToFirst() && idx >= 0) c.getString(idx) else "schema.json"
-                    } ?: "schema.json"
-                    val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
-                    if (content != null && HandosBridge.isNativeLoaded) {
-                        HandosBridge.nativeImportSchema(schemasDir, name, content)
-                        imported++
-                    }
-                }
-            }
-            statusText = "Imported $imported schema file(s) into $schemasDir."
-        }
+    val codingItems = remember {
+        listOf(
+            // E46
+            CodingItemUi("e46_usdm_corners", "E46", "LSZ", "USDM Corner Lights (E46)", "Front turn signals as sidemarkers"),
+            CodingItemUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights (E46)", "Double-impulse hazard flash"),
+            CodingItemUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows (E46)", "Hold fob to open/close windows"),
+            // E8x / E9x (1-Series & 3-Series)
+            CodingItemUi("e8x_e9x_usdm_corners", "E8xE9x", "FRM", "USDM Corner Lights (E8x / E9x)", "Dimmed front turn signals as sidemarkers"),
+            CodingItemUi("e8x_e9x_double_hazard", "E8xE9x", "FRM", "Double Hazard Lights (E8x / E9x)", "Double-impulse hazard blink"),
+            CodingItemUi("e8x_e9x_start_stop_memory", "E8xE9x", "IHKA", "Auto Start/Stop Memory (E8x / E9x)", "Remember last Start/Stop state"),
+            CodingItemUi("e8x_e9x_digital_speedo", "E8xE9x", "KOMBI", "Digital Speedometer (E8x / E9x)", "Uncorrected digital speed in cluster"),
+            // F-Series (F10 / F20 / F30 / F8x)
+            CodingItemUi("fxx_start_stop_memory", "Fxx", "FEM_BODY", "Auto Start/Stop Memory (F-Series)", "Remember last Start/Stop state across restarts"),
+            CodingItemUi("fxx_start_stop_off_default", "Fxx", "FEM_BODY", "Auto Start/Stop Off by Default (F-Series)", "Default Start/Stop to OFF on every start"),
+            CodingItemUi("fxx_digital_speedo", "Fxx", "KOMBI", "Digital Speedometer (F-Series)", "Show digital speed readout in cluster"),
+            CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock (F-Series)", "Fold side mirrors on key fob / comfort lock"),
+            CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers (F-Series)", "Enable US-spec front amber sidemarkers"),
+            CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion (F-Series iDrive)", "Remove iDrive video speed lock"),
+        )
     }
 
-    val presets = remember {
-        listOf(
-            PresetUi("e46_usdm_corners", "E46", "LSZ", "USDM Corner Lights (E46)", "Front turn signals as sidemarkers"),
-            PresetUi("e46_double_hazard", "E46", "LSZ", "Double Hazard Lights (E46)", "Double-impulse hazard flash"),
-            PresetUi("e46_comfort_windows", "E46", "GM5", "Comfort Windows (E46)", "Hold fob to open/close windows"),
-            PresetUi("e8x_e9x_usdm_corners", "E8x/E9x", "FRM", "USDM Corner Lights (1/3-Series)", "Dimmed front turn signals as sidemarkers"),
-            PresetUi("e8x_e9x_double_hazard", "E8x/E9x", "FRM", "Double Hazard Lights (1/3-Series)", "Double-impulse hazard blink"),
-            PresetUi("e8x_e9x_start_stop_memory", "E8x/E9x", "IHKA", "Auto Start/Stop Memory (1/3-Series)", "Remember last Start/Stop state"),
-            PresetUi("e8x_e9x_digital_speedo", "E8x/E9x", "KOMBI", "Digital Speedometer (1/3-Series)", "Uncorrected digital speed in cluster"),
-        )
+    val visibleCodingItems = remember(codingItems, scannedVehicle, showAllVehicles) {
+        val vehicle = scannedVehicle
+        if (vehicle == null || showAllVehicles) {
+            codingItems
+        } else {
+            codingItems.filter { item ->
+                item.family == vehicle.platformFamily &&
+                    (vehicle.ecus.isEmpty() || vehicle.ecus.contains(item.ecu))
+            }
+        }
     }
 
     fun runNative(
@@ -129,7 +142,7 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
         topBar = { TopAppBar(title = { Text("Handos BMW Coding") }) },
         bottomBar = {
             NavigationBar {
-                listOf("Connect", "Presets", "Faults").forEachIndexed { idx, label ->
+                listOf("Connect", "Coding", "Faults").forEachIndexed { idx, label ->
                     NavigationBarItem(
                         selected = selectedTab == idx,
                         onClick = { selectedTab = idx },
@@ -171,7 +184,26 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
                         enabled = !busy,
                         onClick = {
                             onBindWifi()
-                            runNative("Scanning vehicle") {
+                            runNative(
+                                "Scanning vehicle",
+                                onSuccess = { data ->
+                                    val obj = data as? JSONObject ?: return@runNative
+                                    val chassis = obj.optString("chassis")
+                                    val ecuArr = obj.optJSONArray("ecus") ?: JSONArray()
+                                    val ecus = buildSet {
+                                        for (i in 0 until ecuArr.length()) {
+                                            add(ecuArr.getJSONObject(i).optString("name"))
+                                        }
+                                    }
+                                    scannedVehicle = VehicleUi(
+                                        vin = obj.optString("vin"),
+                                        chassis = chassis,
+                                        platformFamily = inferPlatformFamily(chassis),
+                                        batteryVoltage = obj.optDouble("battery_voltage", 0.0),
+                                        ecus = ecus,
+                                    )
+                                }
+                            ) {
                                 HandosBridge.nativeScanVehicle(host, backupDir)
                             }
                         },
@@ -179,30 +211,47 @@ fun HandosApp(backupDir: String, schemasDir: String, onBindWifi: () -> Boolean) 
                     ) {
                         Text("Bind WiFi & Scan Vehicle")
                     }
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = { schemaPicker.launch(arrayOf("*/*")) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Import ECU Schemas (.json / .xml)")
+
+                    scannedVehicle?.let { v ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Connected: ${v.chassis} (${v.vin})", style = MaterialTheme.typography.titleMedium)
+                                Text("Battery: ${"%.2f".format(v.batteryVoltage)}V | ECUs: ${v.ecus.joinToString(", ")}")
+                            }
+                        }
                     }
                 }
                 1 -> {
+                    scannedVehicle?.let { v ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                if (showAllVehicles) "Showing all models" else "Filtered for ${v.chassis}",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            TextButton(onClick = { showAllVehicles = !showAllVehicles }) {
+                                Text(if (showAllVehicles) "Filter to Car" else "Show All")
+                            }
+                        }
+                    }
+
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(presets) { preset ->
+                        items(visibleCodingItems) { item ->
                             Card(modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
-                                        "${preset.title} [${preset.family} • ${preset.ecu}]",
+                                        "${item.title} [${item.family} | ${item.ecu}]",
                                         style = MaterialTheme.typography.titleMedium
                                     )
-                                    Text(preset.description, style = MaterialTheme.typography.bodySmall)
+                                    Text(item.description, style = MaterialTheme.typography.bodySmall)
                                     Spacer(Modifier.height(8.dp))
                                     Button(
                                         enabled = !busy,
                                         onClick = {
-                                            runNative("Applying ${preset.title}") {
-                                                HandosBridge.nativeApplyPreset(host, preset.id, backupDir)
+                                            runNative("Applying ${item.title}") {
+                                                HandosBridge.nativeApplyPreset(host, item.id, backupDir)
                                             }
                                         }
                                     ) {
