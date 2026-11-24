@@ -12,6 +12,25 @@ pub enum AdapterType {
     KdcanUsb,
 }
 
+/// Transport protocol mode for `HandosSession`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransportMode {
+    Simulator,
+    LiveKwpDcan,
+    LiveEnet,
+}
+
+/// Probes common MHD Universal WiFi adapter endpoints and returns the first reachable one.
+pub fn discover_mhd_endpoint(timeout: Duration) -> Option<String> {
+    let candidates = [
+        format!("{DEFAULT_MHD_WIFI_HOST}:{DEFAULT_MHD_WIFI_PORT}"),
+        format!("192.168.1.1:{DEFAULT_MHD_WIFI_PORT}"),
+    ];
+    candidates
+        .into_iter()
+        .find(|candidate| MhdWifiTransport::connect(candidate, timeout).is_ok())
+}
+
 /// Serial baud/bus mode for standard FTDI K+DCAN USB cables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KdcanProtocolMode {

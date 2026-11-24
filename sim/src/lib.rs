@@ -1,5 +1,7 @@
 use handos_core::fsw_psw::FswPswFile;
+use handos_core::live_data::TelemetrySample;
 use handos_core::protocol::{sid, DiagnosticFrame, PayloadType, GATEWAY_ADDRESS, TESTER_ADDRESS};
+use handos_core::service::{ServiceJob, ServiceReport};
 use handos_core::types::{Chassis, Dtc, EcuInfo, VehicleInfo};
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
@@ -163,7 +165,15 @@ impl SimulatedCar {
         let mut dtcs = HashMap::new();
         dtcs.insert(0x40, vec![]);
         dtcs.insert(0x60, vec![]);
-        dtcs.insert(0x63, vec![]);
+        dtcs.insert(
+            0x63,
+            vec![Dtc {
+                ecu: "HU_NBT".to_string(),
+                code: "30FF".to_string(),
+                description: String::new(),
+                active: false,
+            }],
+        );
 
         Self {
             vehicle: VehicleInfo {
@@ -207,15 +217,61 @@ impl SimulatedCar {
         }
 
         let service = frame.payload[0];
-        if frame.payload_type == PayloadType::AdapterControl && service == sid::ADAPTER_SCAN {
-            let mut body = vec![service + 0x40];
-            body.extend_from_slice(&serde_json::to_vec(&self.vehicle).unwrap());
-            return DiagnosticFrame::new(
-                PayloadType::AdapterControl,
-                GATEWAY_ADDRESS,
-                TESTER_ADDRESS,
-                body,
-            );
+        if frame.payload_type == PayloadType::AdapterControl {
+            match service {
+                sid::ADAPTER_SCAN => {
+                    let mut body = vec![service + 0x40];
+                    body.extend_from_slice(&serde_json::to_vec(&self.vehicle).unwrap());
+                    return DiagnosticFrame::new(
+                        PayloadType::AdapterControl,
+                        GATEWAY_ADDRESS,
+                        TESTER_ADDRESS,
+                        body,
+                    );
+                }
+                sid::READ_TELEMETRY => {
+                    let sample = TelemetrySample {
+                        timestamp_ms: 1_700_000_000_000,
+                        battery_voltage: self.vehicle.battery_voltage,
+                        rpm: 2450,
+                        coolant_temp_c: 92.0,
+                        oil_temp_c: 101.5,
+                        boost_kpa: 165.0,
+                        intake_temp_c: 34.0,
+                        vehicle_speed_kmh: 64.0,
+                    };
+                    let mut body = vec![service + 0x40];
+                    body.extend_from_slice(&serde_json::to_vec(&sample).unwrap());
+                    return DiagnosticFrame::new(
+                        PayloadType::AdapterControl,
+                        GATEWAY_ADDRESS,
+                        TESTER_ADDRESS,
+                        body,
+                    );
+                }
+                sid::SERVICE_ROUTINE => {
+                    let routine = frame.payload.get(1).copied().unwrap_or(0);
+                    let job = match routine {
+                        0x01 => ServiceJob::RegisterBattery,
+                        0x02 => ServiceJob::ResetOilService,
+                        _ => ServiceJob::ResetBrakeService,
+                    };
+                    let report = ServiceReport {
+                        job,
+                        ecu: "DME/CAS".to_string(),
+                        status: "completed".to_string(),
+                    };
+                    let mut body = vec![service + 0x40];
+                    body.extend_from_slice(&serde_json::to_vec(&report).unwrap());
+                    return DiagnosticFrame::new(
+                        PayloadType::AdapterControl,
+                        GATEWAY_ADDRESS,
+                        TESTER_ADDRESS,
+                        body,
+                    );
+                }
+                _ => {}
+            }
         }
 
         let target = frame.target;

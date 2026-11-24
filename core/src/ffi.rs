@@ -77,6 +77,92 @@ pub fn preset_statuses_json(host: &str, backup_dir: &str) -> String {
     to_json_response(res)
 }
 
+pub fn list_backups_json(vin: &str, backup_dir: &str) -> String {
+    let res = (|| {
+        let backups = BackupManager::new(backup_dir)?;
+        backups.list_backups(vin)
+    })();
+    to_json_response(res)
+}
+
+pub fn restore_backup_json(
+    host: &str,
+    ecu_name: &str,
+    backup_path: &str,
+    backup_dir: &str,
+) -> String {
+    let res = (|| {
+        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let backups = BackupManager::new(backup_dir)?;
+        let mut session = HandosSession::new(transport, backups);
+        let vehicle = session.scan_vehicle()?;
+        let ecu = vehicle
+            .ecus
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case(ecu_name))
+            .cloned()
+            .ok_or_else(|| crate::HandosError::Protocol(format!("ECU '{ecu_name}' not found")))?;
+        session.restore_backup(&ecu, backup_path)
+    })();
+    to_json_response(res)
+}
+
+pub fn run_service_job_json(host: &str, job_id: &str, backup_dir: &str) -> String {
+    let res = (|| {
+        let job = match job_id {
+            "register_battery" => crate::ServiceJob::RegisterBattery,
+            "reset_oil_service" => crate::ServiceJob::ResetOilService,
+            "reset_brake_service" => crate::ServiceJob::ResetBrakeService,
+            other => {
+                return Err(crate::HandosError::Protocol(format!(
+                    "unknown service job '{other}'"
+                )))
+            }
+        };
+        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let backups = BackupManager::new(backup_dir)?;
+        let mut session = HandosSession::new(transport, backups);
+        session.run_service_job(job)
+    })();
+    to_json_response(res)
+}
+
+pub fn read_telemetry_json(host: &str, backup_dir: &str) -> String {
+    let res = (|| {
+        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let backups = BackupManager::new(backup_dir)?;
+        let mut session = HandosSession::new(transport, backups);
+        session.read_live_telemetry()
+    })();
+    to_json_response(res)
+}
+
+pub fn read_ecu_params_json(host: &str, ecu_name: &str, backup_dir: &str) -> String {
+    let res = (|| {
+        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let backups = BackupManager::new(backup_dir)?;
+        let mut session = HandosSession::new(transport, backups);
+        session.read_ecu_params(ecu_name)
+    })();
+    to_json_response(res)
+}
+
+pub fn set_ecu_param_json(
+    host: &str,
+    ecu_name: &str,
+    parameter: &str,
+    value: &str,
+    backup_dir: &str,
+) -> String {
+    let res = (|| {
+        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let backups = BackupManager::new(backup_dir)?;
+        let mut session = HandosSession::new(transport, backups);
+        session.apply_single_param_safely(ecu_name, parameter, value)
+    })();
+    to_json_response(res)
+}
+
 pub fn read_dtcs_json(host: &str, backup_dir: &str) -> String {
     let res = (|| {
         let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
@@ -278,5 +364,103 @@ mod android_jni {
         let body = get_str(&mut env, content);
         let out = import_schema_json(&dir, &name, &body);
         env.new_string(out).unwrap().into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeListBackups(
+        mut env: JNIEnv,
+        _class: JClass,
+        vin: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let v = get_str(&mut env, vin);
+        let d = get_str(&mut env, backup_dir);
+        env.new_string(list_backups_json(&v, &d))
+            .unwrap()
+            .into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeRestoreBackup(
+        mut env: JNIEnv,
+        _class: JClass,
+        host: JString,
+        ecu_name: JString,
+        backup_path: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let h = get_str(&mut env, host);
+        let e = get_str(&mut env, ecu_name);
+        let p = get_str(&mut env, backup_path);
+        let d = get_str(&mut env, backup_dir);
+        env.new_string(restore_backup_json(&h, &e, &p, &d))
+            .unwrap()
+            .into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeRunServiceJob(
+        mut env: JNIEnv,
+        _class: JClass,
+        host: JString,
+        job_id: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let h = get_str(&mut env, host);
+        let j = get_str(&mut env, job_id);
+        let d = get_str(&mut env, backup_dir);
+        env.new_string(run_service_job_json(&h, &j, &d))
+            .unwrap()
+            .into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeReadTelemetry(
+        mut env: JNIEnv,
+        _class: JClass,
+        host: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let h = get_str(&mut env, host);
+        let d = get_str(&mut env, backup_dir);
+        env.new_string(read_telemetry_json(&h, &d))
+            .unwrap()
+            .into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeReadEcuParams(
+        mut env: JNIEnv,
+        _class: JClass,
+        host: JString,
+        ecu_name: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let h = get_str(&mut env, host);
+        let e = get_str(&mut env, ecu_name);
+        let d = get_str(&mut env, backup_dir);
+        env.new_string(read_ecu_params_json(&h, &e, &d))
+            .unwrap()
+            .into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeSetEcuParam(
+        mut env: JNIEnv,
+        _class: JClass,
+        host: JString,
+        ecu_name: JString,
+        parameter: JString,
+        value: JString,
+        backup_dir: JString,
+    ) -> jstring {
+        let h = get_str(&mut env, host);
+        let e = get_str(&mut env, ecu_name);
+        let p = get_str(&mut env, parameter);
+        let v = get_str(&mut env, value);
+        let d = get_str(&mut env, backup_dir);
+        env.new_string(set_ecu_param_json(&h, &e, &p, &v, &d))
+            .unwrap()
+            .into_raw()
     }
 }

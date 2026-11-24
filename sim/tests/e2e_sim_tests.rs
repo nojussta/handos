@@ -1,6 +1,6 @@
 use handos_core::{
     builtin_presets, scan_nbt_evo_preflight, BackupManager, Chassis, HandosError, HandosSession,
-    MhdWifiTransport, TcpSshProbe,
+    MhdWifiTransport, ServiceJob, TcpSshProbe,
 };
 use handos_sim::{spawn_simulator, SimulatedCar};
 use std::time::Duration;
@@ -136,4 +136,26 @@ fn f30_coding_flow_succeeds() {
             .unwrap()
             .enabled
     );
+
+    // Offline DTC enrichment on HU_NBT (30FF -> underboost)
+    let hu = vehicle.ecus.iter().find(|e| e.name == "HU_NBT").unwrap();
+    let dtcs = session.read_dtcs(hu).unwrap();
+    assert_eq!(dtcs.len(), 1);
+    assert!(dtcs[0].description.contains("underboost"));
+
+    // Live telemetry & service routines
+    let telemetry = session.read_live_telemetry().unwrap();
+    assert!(telemetry.boost_kpa > 100.0);
+    let svc = session
+        .run_service_job(ServiceJob::RegisterBattery)
+        .unwrap();
+    assert_eq!(svc.status, "completed");
+
+    // Expert FSW_PSW param read & single edit
+    let params = session.read_ecu_params("KOMBI").unwrap();
+    assert!(params.iter().any(|(k, _)| k == "BC_DIGITAL_V"));
+    let expert_report = session
+        .apply_single_param_safely("KOMBI", "BC_DIGITAL_V", "aktiv")
+        .unwrap();
+    assert!(expert_report.verified);
 }

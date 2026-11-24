@@ -39,6 +39,8 @@ pub mod sid {
     pub const ADAPTER_SCAN: u8 = 0x01;
     pub const READ_ECU_ID: u8 = 0x1A;
     pub const READ_CODING_DATA: u8 = 0x21;
+    pub const READ_TELEMETRY: u8 = 0x22;
+    pub const SERVICE_ROUTINE: u8 = 0x31;
     pub const WRITE_CODING_DATA: u8 = 0x3B;
     pub const READ_DTC: u8 = 0x18;
     pub const CLEAR_DTC: u8 = 0x14;

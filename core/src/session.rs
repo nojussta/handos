@@ -1,8 +1,11 @@
 use crate::backup::BackupManager;
+use crate::dtc_catalog::resolve_dtc_description;
 use crate::error::{HandosError, Result};
 use crate::fsw_psw::FswPswFile;
+use crate::live_data::TelemetrySample;
 use crate::presets::builtin_presets;
 use crate::protocol::{sid, DiagnosticFrame};
+use crate::service::{ServiceJob, ServiceReport};
 use crate::transport::Transport;
 use crate::types::{
     CodingDiff, CodingPreset, CodingReport, Dtc, EcuInfo, PresetChange, PresetStatus, VehicleInfo,
@@ -235,13 +238,97 @@ impl<T: Transport> HandosSession<T> {
         Ok(diffs)
     }
 
-    /// Reads fault codes (DTCs / error memory) from a specific ECU.
+    /// Reads fault codes (DTCs / error memory) from a specific ECU and enriches
+    /// descriptions using the offline BMW/OBD DTC catalog.
     pub fn read_dtcs(&mut self, ecu: &EcuInfo) -> Result<Vec<Dtc>> {
         let req = DiagnosticFrame::diagnostic(ecu.address, vec![sid::READ_DTC, 0x00]);
         let resp = self.transport.exchange(&req)?;
         let payload = resp.check_positive(&ecu.name, sid::READ_DTC)?;
-        let dtcs: Vec<Dtc> = serde_json::from_slice(payload)?;
+        let mut dtcs: Vec<Dtc> = serde_json::from_slice(payload)?;
+        for dtc in &mut dtcs {
+            dtc.description = resolve_dtc_description(&dtc.code, &dtc.description);
+        }
         Ok(dtcs)
+    }
+
+    /// Reads live engine/vehicle telemetry (boost, oil temp, coolant temp, RPM, voltage).
+    pub fn read_live_telemetry(&mut self) -> Result<TelemetrySample> {
+        let req = DiagnosticFrame::adapter_control(vec![sid::READ_TELEMETRY]);
+        let resp = self.transport.exchange(&req)?;
+        let payload = resp.check_positive("GATEWAY", sid::READ_TELEMETRY)?;
+        let sample: TelemetrySample = serde_json::from_slice(payload)?;
+        Ok(sample)
+    }
+
+    /// Executes a BMW maintenance/service job (e.g. battery registration, CBS reset).
+    pub fn run_service_job(&mut self, job: ServiceJob) -> Result<ServiceReport> {
+        let vehicle = match &self.cached_vehicle {
+            Some(v) => v.clone(),
+            None => self.scan_vehicle()?,
+        };
+        if vehicle.battery_voltage < MIN_SAFE_CODING_VOLTAGE {
+            return Err(HandosError::LowVoltage {
+                voltage: vehicle.battery_voltage,
+                minimum: MIN_SAFE_CODING_VOLTAGE,
+            });
+        }
+        let req = DiagnosticFrame::adapter_control(vec![sid::SERVICE_ROUTINE, job.routine_id()]);
+        let resp = self.transport.exchange(&req)?;
+        let payload = resp.check_positive("GATEWAY", sid::SERVICE_ROUTINE)?;
+        let report: ServiceReport = serde_json::from_slice(payload)?;
+        Ok(report)
+    }
+
+    /// Reads all `FSW_PSW` parameters from an ECU by name for the Expert browser.
+    pub fn read_ecu_params(&mut self, ecu_name: &str) -> Result<Vec<(String, String)>> {
+        let vehicle = match &self.cached_vehicle {
+            Some(v) => v.clone(),
+            None => self.scan_vehicle()?,
+        };
+        let ecu = vehicle
+            .ecus
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case(ecu_name))
+            .cloned()
+            .ok_or_else(|| HandosError::Protocol(format!("ECU '{ecu_name}' not found")))?;
+        let trace = self.read_ecu_coding(&ecu)?;
+        Ok(trace
+            .parameters()
+            .iter()
+            .map(|p| (p.clone(), trace.get_single(p).unwrap_or("").to_string()))
+            .collect())
+    }
+
+    /// Safely updates a single `FSW_PSW` parameter on an ECU (with backup + verification).
+    pub fn apply_single_param_safely(
+        &mut self,
+        ecu_name: &str,
+        parameter: &str,
+        value: &str,
+    ) -> Result<CodingReport> {
+        let vehicle = match &self.cached_vehicle {
+            Some(v) => v.clone(),
+            None => self.scan_vehicle()?,
+        };
+        if vehicle.battery_voltage < MIN_SAFE_CODING_VOLTAGE {
+            return Err(HandosError::LowVoltage {
+                voltage: vehicle.battery_voltage,
+                minimum: MIN_SAFE_CODING_VOLTAGE,
+            });
+        }
+        let ecu = vehicle
+            .ecus
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case(ecu_name))
+            .cloned()
+            .ok_or_else(|| HandosError::Protocol(format!("ECU '{ecu_name}' not found")))?;
+        let change = PresetChange {
+            parameter: parameter.to_string(),
+            value: value.to_string(),
+            off_value: "nicht_aktiv".to_string(),
+            aliases: vec![],
+        };
+        self.apply_changes_safely(&vehicle.vin, &ecu, &[change])
     }
 
     /// Clears fault codes (error memory) on a specific ECU.

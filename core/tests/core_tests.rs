@@ -1,9 +1,9 @@
 use handos_core::fsw_psw::{parse_sp_daten_defs, FswPswFile};
 use handos_core::{
-    builtin_ecu_schemas, builtin_presets, parse_ncsdummy_xml, run_nbt_evo_preflight, BackupManager,
-    Chassis, DiagnosticFrame, Ds2Packet, EcuInfo, HeadUnitSshClient, KdcanProtocolMode,
-    KdcanSerialTransport, KwpPacket, NettodatImage, PresetChange, SchemaRegistry, Transport,
-    VehicleInfo,
+    builtin_ecu_schemas, builtin_presets, parse_ncsdummy_xml, resolve_dtc_description,
+    run_nbt_evo_preflight, BackupManager, Chassis, DataLogger, DiagnosticFrame, Ds2Packet, EcuInfo,
+    HeadUnitSshClient, KdcanProtocolMode, KdcanSerialTransport, KwpPacket, NettodatImage,
+    PresetChange, SchemaRegistry, TelemetrySample, Transport, VehicleInfo,
 };
 use tempfile::TempDir;
 
@@ -273,4 +273,32 @@ fn kdcan_serial_transport_exchanges_frames() {
     let req = DiagnosticFrame::diagnostic(0x72, vec![0x21, 0x01]);
     let resp = transport.exchange(&req).unwrap();
     assert_eq!(resp, req);
+}
+
+#[test]
+fn dtc_catalog_resolves_offline_bmw_codes() {
+    let desc = resolve_dtc_description("30FF", "");
+    assert!(desc.contains("underboost"));
+    let fallback = resolve_dtc_description("FFFF", "Custom message");
+    assert_eq!(fallback, "Custom message");
+}
+
+#[test]
+fn data_logger_exports_csv_file() {
+    let dir = TempDir::new().unwrap();
+    let mut logger = DataLogger::new();
+    logger.push(TelemetrySample {
+        timestamp_ms: 1000,
+        battery_voltage: 12.8,
+        rpm: 2500,
+        coolant_temp_c: 92.0,
+        oil_temp_c: 101.0,
+        boost_kpa: 165.0,
+        intake_temp_c: 34.0,
+        vehicle_speed_kmh: 60.0,
+    });
+    let csv_path = logger.save_csv(dir.path()).unwrap();
+    let content = std::fs::read_to_string(csv_path).unwrap();
+    assert!(content.contains("boost_kpa"));
+    assert!(content.contains("165.0"));
 }
