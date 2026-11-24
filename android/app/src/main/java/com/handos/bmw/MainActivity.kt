@@ -4,9 +4,12 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -29,7 +32,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.handos.bmw.ui.theme.HandosTheme
 import kotlinx.coroutines.Dispatchers
@@ -134,6 +140,30 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun parseTelemetryCsv(csv: String): List<TelemetryUi> {
+    val result = mutableListOf<TelemetryUi>()
+    for (rawLine in csv.lineSequence()) {
+        val line = rawLine.trim()
+        if (line.isEmpty() || line.startsWith("timestamp_ms")) continue
+        val cols = line.split(',')
+        if (cols.size < 8) continue
+        val ts = cols[0].toLongOrNull() ?: continue
+        result.add(
+            TelemetryUi(
+                timestampMs = ts,
+                batteryVoltage = cols[1].toDoubleOrNull() ?: 0.0,
+                rpm = cols[2].toIntOrNull() ?: 0,
+                coolantTempC = cols[3].toDoubleOrNull() ?: 0.0,
+                oilTempC = cols[4].toDoubleOrNull() ?: 0.0,
+                boostKpa = cols[5].toDoubleOrNull() ?: 0.0,
+                intakeTempC = cols[6].toDoubleOrNull() ?: 0.0,
+                speedKmh = cols[7].toDoubleOrNull() ?: 0.0,
+            ),
+        )
+    }
+    return result
+}
+
 private fun inferPlatformFamily(chassis: String): String {
     val upper = chassis.uppercase()
     return when {
@@ -178,6 +208,33 @@ fun HandosApp(
     val recordedSamples = remember { mutableStateListOf<TelemetryUi>() }
     var activeLogFile by remember { mutableStateOf<File?>(null) }
     var savedSampleCount by remember { mutableIntStateOf(0) }
+    var historicalSamples by remember { mutableStateOf<List<TelemetryUi>?>(null) }
+    var historicalLabel by remember { mutableStateOf<String?>(null) }
+    var selectedChartParams by remember { mutableStateOf(setOf("boost", "rpm", "oil", "coolant")) }
+    var expandedChart by remember { mutableStateOf(false) }
+    var showSavedLogsPicker by remember { mutableStateOf(false) }
+
+    val csvImporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (c.moveToFirst() && idx >= 0) c.getString(idx) else "imported_log.csv"
+        } ?: "imported_log.csv"
+        val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
+        if (content != null) {
+            val parsed = parseTelemetryCsv(content)
+            if (parsed.isNotEmpty()) {
+                historicalSamples = parsed
+                historicalLabel = name
+                isLogging = false
+                statusText = "Loaded ${parsed.size} historical samples from $name"
+            } else {
+                statusText = "Could not parse telemetry samples from $name"
+            }
+        }
+    }
 
     val codingItems = remember {
         listOf(
@@ -439,6 +496,91 @@ fun HandosApp(
 
     codingDialog?.let { dlg ->
         CodingProgressDialog(state = dlg, onDismiss = { codingDialog = null })
+    }
+
+    if (showSavedLogsPicker) {
+        val logFiles = File(logsDir).listFiles { f -> f.extension.equals("csv", ignoreCase = true) }
+            ?.sortedByDescending { it.lastModified() }
+            ?: emptyList()
+        AlertDialog(
+            onDismissRequest = { showSavedLogsPicker = false },
+            title = { Text("Select Saved Log File") },
+            text = {
+                if (logFiles.isEmpty()) {
+                    Text("No saved CSV logs in this app yet.")
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(logFiles) { f ->
+                            OutlinedButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    val parsed = parseTelemetryCsv(f.readText())
+                                    if (parsed.isNotEmpty()) {
+                                        historicalSamples = parsed
+                                        historicalLabel = f.name
+                                        isLogging = false
+                                        statusText = "Loaded ${parsed.size} samples from ${f.name}"
+                                    }
+                                    showSavedLogsPicker = false
+                                },
+                            ) {
+                                Text("${f.name} (${f.length() / 1024 + 1} KB)")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSavedLogsPicker = false }) { Text("Close") }
+            },
+        )
+    }
+
+    if (expandedChart) {
+        val chartData = historicalSamples ?: recordedSamples.toList()
+        Dialog(
+            onDismissRequest = { expandedChart = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            historicalLabel ?: "Live Session Graph (${chartData.size} pts)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        IconButton(onClick = { expandedChart = false }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Close")
+                        }
+                    }
+                    ChartParamFilterRow(
+                        selectedParams = selectedChartParams,
+                        onToggleParam = { key ->
+                            selectedChartParams = if (key in selectedChartParams && selectedChartParams.size > 1) {
+                                selectedChartParams - key
+                            } else {
+                                selectedChartParams + key
+                            }
+                        },
+                    )
+                    TelemetryComparisonChart(
+                        samples = chartData.takeLast(200),
+                        selectedParams = selectedChartParams,
+                        chartHeight = 360.dp,
+                        onExpand = null,
+                    )
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -860,7 +1002,13 @@ fun HandosApp(
                         Button(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),
-                            onClick = { isLogging = !isLogging },
+                            onClick = {
+                                if (!isLogging) {
+                                    historicalSamples = null
+                                    historicalLabel = null
+                                }
+                                isLogging = !isLogging
+                            },
                         ) {
                             Icon(if (isLogging) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
@@ -892,7 +1040,7 @@ fun HandosApp(
                             Spacer(Modifier.width(4.dp))
                             Text(if (activeLogFile == null) "Save (${recordedSamples.size})" else "Append (${recordedSamples.size - savedSampleCount})")
                         }
-                        if (!isLogging && (recordedSamples.isNotEmpty() || activeLogFile != null)) {
+                        if (!isLogging && (recordedSamples.isNotEmpty() || activeLogFile != null || historicalSamples != null)) {
                             OutlinedButton(
                                 shape = RoundedCornerShape(12.dp),
                                 onClick = {
@@ -900,10 +1048,57 @@ fun HandosApp(
                                     latestTelemetry = null
                                     activeLogFile = null
                                     savedSampleCount = 0
+                                    historicalSamples = null
+                                    historicalLabel = null
                                     statusText = "Cleared logged data."
                                 },
                             ) {
                                 Text("Clear")
+                            }
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f),
+                            onClick = { showSavedLogsPicker = true },
+                        ) {
+                            Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Saved Logs")
+                        }
+                        OutlinedButton(
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f),
+                            onClick = { csvImporter.launch(arrayOf("text/*", "*/*")) },
+                        ) {
+                            Icon(Icons.Rounded.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Import CSV")
+                        }
+                    }
+
+                    historicalLabel?.let { label ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "Historical: $label (${historicalSamples?.size ?: 0} pts)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                                TextButton(onClick = {
+                                    historicalSamples = null
+                                    historicalLabel = null
+                                }) { Text("Live") }
                             }
                         }
                     }
@@ -943,11 +1138,12 @@ fun HandosApp(
                         }
                     }
 
-                    val t = latestTelemetry
+                    val chartSamples = historicalSamples ?: recordedSamples.toList()
+                    val t = chartSamples.lastOrNull() ?: latestTelemetry
                     if (t == null) {
                         ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Tap Start to stream live Boost, Oil Temp, Coolant Temp, RPM, and Voltage.",
+                                "Tap Start to stream live metrics, or pick Saved Logs / Import CSV to inspect a historical log.",
                                 modifier = Modifier.padding(16.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -964,9 +1160,26 @@ fun HandosApp(
                             "Vehicle Speed" to "${"%.0f".format(t.speedKmh)} km/h",
                         )
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (recordedSamples.size >= 2) {
+                            if (chartSamples.size >= 2) {
                                 item {
-                                    TelemetryComparisonChart(samples = recordedSamples.takeLast(80))
+                                    ChartParamFilterRow(
+                                        selectedParams = selectedChartParams,
+                                        onToggleParam = { key ->
+                                            selectedChartParams = if (key in selectedChartParams && selectedChartParams.size > 1) {
+                                                selectedChartParams - key
+                                            } else {
+                                                selectedChartParams + key
+                                            }
+                                        },
+                                    )
+                                }
+                                item {
+                                    TelemetryComparisonChart(
+                                        samples = chartSamples.takeLast(120),
+                                        selectedParams = selectedChartParams,
+                                        chartHeight = 210.dp,
+                                        onExpand = { expandedChart = true },
+                                    )
                                 }
                             }
                             items(metrics) { (label, value) ->
@@ -1084,11 +1297,46 @@ fun HandosApp(
 }
 
 @Composable
-fun TelemetryComparisonChart(samples: List<TelemetryUi>) {
-    val boostColor = Color(0xFF4C9AFF)
-    val rpmColor = Color(0xFF7FD4C1)
-    val oilColor = Color(0xFFFFB74D)
-    val coolantColor = Color(0xFFFF6B6B)
+fun ChartParamFilterRow(
+    selectedParams: Set<String>,
+    onToggleParam: (String) -> Unit,
+) {
+    val options = listOf(
+        "boost" to "Boost",
+        "rpm" to "RPM",
+        "oil" to "Oil °C",
+        "coolant" to "Coolant °C",
+        "intake" to "Intake °C",
+        "voltage" to "Voltage",
+        "speed" to "Speed",
+    )
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(options) { (key, label) ->
+            FilterChip(
+                selected = key in selectedParams,
+                onClick = { onToggleParam(key) },
+                label = { Text(label) },
+            )
+        }
+    }
+}
+
+@Composable
+fun TelemetryComparisonChart(
+    samples: List<TelemetryUi>,
+    selectedParams: Set<String>,
+    chartHeight: Dp = 210.dp,
+    onExpand: (() -> Unit)? = null,
+) {
+    val seriesMeta = listOf(
+        Triple("boost", "Boost", Color(0xFF4C9AFF)),
+        Triple("rpm", "RPM", Color(0xFF7FD4C1)),
+        Triple("oil", "Oil °C", Color(0xFFFFB74D)),
+        Triple("coolant", "Coolant °C", Color(0xFFFF6B6B)),
+        Triple("intake", "Intake °C", Color(0xFFBA68C8)),
+        Triple("voltage", "Voltage", Color(0xFF81C784)),
+        Triple("speed", "Speed", Color(0xFFFFD54F)),
+    )
     val gridColor = MaterialTheme.colorScheme.outlineVariant
 
     ElevatedCard(
@@ -1097,18 +1345,28 @@ fun TelemetryComparisonChart(samples: List<TelemetryUi>) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "Comparison Graph (Normalized)",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Comparison Graph (Normalized)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                onExpand?.let { expand ->
+                    IconButton(onClick = expand, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Rounded.OpenInFull, contentDescription = "Expand graph", modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(150.dp),
+                    .height(chartHeight),
             ) {
                 if (samples.size < 2) return@Canvas
-                // Draw subtle horizontal grid lines
                 listOf(0.25f, 0.5f, 0.75f).forEach { frac ->
                     val y = size.height * frac
                     drawLine(gridColor.copy(alpha = 0.4f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
@@ -1126,16 +1384,18 @@ fun TelemetryComparisonChart(samples: List<TelemetryUi>) {
                     drawPath(path, color = color, style = Stroke(width = 3.5f, cap = StrokeCap.Round))
                 }
 
-                drawSeries(samples.map { it.boostKpa }, 90.0, 220.0, boostColor)
-                drawSeries(samples.map { it.rpm.toDouble() }, 600.0, 6500.0, rpmColor)
-                drawSeries(samples.map { it.oilTempC }, 60.0, 130.0, oilColor)
-                drawSeries(samples.map { it.coolantTempC }, 60.0, 120.0, coolantColor)
+                if ("boost" in selectedParams) drawSeries(samples.map { it.boostKpa }, 90.0, 230.0, Color(0xFF4C9AFF))
+                if ("rpm" in selectedParams) drawSeries(samples.map { it.rpm.toDouble() }, 600.0, 6800.0, Color(0xFF7FD4C1))
+                if ("oil" in selectedParams) drawSeries(samples.map { it.oilTempC }, 50.0, 140.0, Color(0xFFFFB74D))
+                if ("coolant" in selectedParams) drawSeries(samples.map { it.coolantTempC }, 50.0, 125.0, Color(0xFFFF6B6B))
+                if ("intake" in selectedParams) drawSeries(samples.map { it.intakeTempC }, 10.0, 80.0, Color(0xFFBA68C8))
+                if ("voltage" in selectedParams) drawSeries(samples.map { it.batteryVoltage }, 11.0, 15.0, Color(0xFF81C784))
+                if ("speed" in selectedParams) drawSeries(samples.map { it.speedKmh }, 0.0, 250.0, Color(0xFFFFD54F))
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Boost", color = boostColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                Text("RPM", color = rpmColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                Text("Oil °C", color = oilColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                Text("Coolant °C", color = coolantColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(seriesMeta.filter { it.first in selectedParams }) { (_, label, color) ->
+                    Text(label, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
