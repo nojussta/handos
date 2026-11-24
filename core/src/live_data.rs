@@ -1,7 +1,8 @@
 use crate::error::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Single live engine/vehicle telemetry sample.
@@ -68,5 +69,37 @@ impl DataLogger {
         let path = dir.join(format!("handos_log_{ts}.csv"));
         fs::write(&path, self.to_csv())?;
         Ok(path)
+    }
+
+    /// Appends samples starting at `start_index` to `path` (creating with header if needed).
+    /// Returns the new total sample count (`self.samples.len()`).
+    pub fn append_csv(&self, path: impl AsRef<Path>, start_index: usize) -> Result<usize> {
+        let target = path.as_ref();
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let needs_header = !target.exists() || fs::metadata(target)?.len() == 0;
+        let mut file = OpenOptions::new().create(true).append(true).open(target)?;
+        if needs_header {
+            writeln!(
+                file,
+                "timestamp_ms,battery_voltage,rpm,coolant_temp_c,oil_temp_c,boost_kpa,intake_temp_c,vehicle_speed_kmh"
+            )?;
+        }
+        for s in self.samples.iter().skip(start_index) {
+            writeln!(
+                file,
+                "{},{:.2},{},{:.1},{:.1},{:.1},{:.1},{:.1}",
+                s.timestamp_ms,
+                s.battery_voltage,
+                s.rpm,
+                s.coolant_temp_c,
+                s.oil_temp_c,
+                s.boost_kpa,
+                s.intake_temp_c,
+                s.vehicle_speed_kmh
+            )?;
+        }
+        Ok(self.samples.len())
     }
 }

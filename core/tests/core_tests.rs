@@ -301,4 +301,23 @@ fn data_logger_exports_csv_file() {
     let content = std::fs::read_to_string(csv_path).unwrap();
     assert!(content.contains("boost_kpa"));
     assert!(content.contains("165.0"));
+
+    // Append a second sample to a single session file without duplicating headers
+    let session_csv = dir.path().join("session.csv");
+    let next_idx = logger.append_csv(&session_csv, 0).unwrap();
+    assert_eq!(next_idx, 1);
+    logger.push(TelemetrySample {
+        timestamp_ms: 2000,
+        battery_voltage: 12.7,
+        rpm: 3100,
+        coolant_temp_c: 93.0,
+        oil_temp_c: 102.0,
+        boost_kpa: 190.0,
+        intake_temp_c: 35.0,
+        vehicle_speed_kmh: 80.0,
+    });
+    let next_idx2 = logger.append_csv(&session_csv, next_idx).unwrap();
+    assert_eq!(next_idx2, 2);
+    let appended = std::fs::read_to_string(&session_csv).unwrap();
+    assert_eq!(appended.lines().count(), 3);
 }
