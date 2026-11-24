@@ -200,5 +200,38 @@
         "aliases": ["SPEEDLOCK_X_KMH_MIN"]
       }
     ]
+  },
+  {
+    "id": "fxx_nbt_evo_aa_prep",
+    "title": "NBT EVO Android Auto Prep (CarLife & WLAN)",
+    "description": "Enables CarLife slot and WLAN flags on HU_NBT2 (NBT EVO ID5/ID6) required by open-source NBT EVO Android Auto.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "CARLIFE",
+        "value": "aktiv",
+        "aliases": ["BAIDU_CARLIFE", "CARLIFE_MODE"]
+      },
+      {
+        "parameter": "WLAN_STATUS",
+        "value": "aktiv",
+        "aliases": ["ENT_MC_WLAN_STREAM_DMP_COVERART"]
+      }
+    ]
+  },
+  {
+    "id": "fxx_nbt_evo_carplay_fullscreen",
+    "title": "NBT EVO CarPlay Fullscreen",
+    "description": "Enables fullscreen CarPlay display mode on HU_NBT2 (NBT EVO ID5/ID6).",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "CARPLAY_FULLSCREEN",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
   }
 ]

@@ -154,7 +154,10 @@ impl SimulatedCar {
         );
         coding_data.insert(
             0x63,
-            FswPswFile::parse("SPEEDLOCK_X_KMH_MAX\n\twerte=03\n").unwrap(),
+            FswPswFile::parse(
+                "SPEEDLOCK_X_KMH_MAX\n\twerte=03\nCARLIFE\n\tnicht_aktiv\nWLAN_STATUS\n\tnicht_aktiv\nCARPLAY_FULLSCREEN\n\tnicht_aktiv\n",
+            )
+            .unwrap(),
         );
 
         let mut dtcs = HashMap::new();

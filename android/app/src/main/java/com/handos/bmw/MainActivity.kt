@@ -98,6 +98,8 @@ fun HandosApp(backupDir: String, onBindWifi: () -> Boolean) {
             CodingItemUi("fxx_mirrors_fold_lock", "Fxx", "FEM_BODY", "Fold Mirrors on Lock (F-Series)", "Fold side mirrors on key fob / comfort lock"),
             CodingItemUi("fxx_usdm_sidemarkers", "Fxx", "FEM_BODY", "USDM Corner Sidemarkers (F-Series)", "Enable US-spec front amber sidemarkers"),
             CodingItemUi("fxx_video_in_motion", "Fxx", "HU_NBT", "Video in Motion (F-Series iDrive)", "Remove iDrive video speed lock"),
+            CodingItemUi("fxx_nbt_evo_aa_prep", "Fxx", "HU_NBT", "NBT EVO Android Auto Prep", "Enable CarLife slot & WLAN flags for NBT EVO AA"),
+            CodingItemUi("fxx_nbt_evo_carplay_fullscreen", "Fxx", "HU_NBT", "NBT EVO CarPlay Fullscreen", "Enable fullscreen CarPlay on NBT EVO ID5/ID6"),
         )
     }
 

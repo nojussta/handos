@@ -94,6 +94,8 @@ fn f30_coding_flow_succeeds() {
         "fxx_start_stop_memory",
         "fxx_digital_speedo",
         "fxx_video_in_motion",
+        "fxx_nbt_evo_aa_prep",
+        "fxx_nbt_evo_carplay_fullscreen",
     ] {
         let preset = presets.iter().find(|p| p.id == id).unwrap();
         let report = session.apply_preset_safely(preset).unwrap();
