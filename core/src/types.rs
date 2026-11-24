@@ -11,6 +11,12 @@ pub enum Chassis {
     E90,
     E60,
     E84,
+    /// F-Series 5-Series (F10 / F11 / F07)
+    F10,
+    /// F-Series 1-Series / 2-Series (F20 / F21 / F22 / F23)
+    F20,
+    /// F-Series 3-Series / 4-Series (F30 / F31 / F32 / F33 / F36 / F80 / F82)
+    F30,
     Other(String),
 }
 
@@ -36,17 +42,36 @@ impl Chassis {
             Self::E60
         } else if upper.contains("E84") {
             Self::E84
+        } else if upper.contains("F10") || upper.contains("F11") || upper.contains("F07") {
+            Self::F10
+        } else if upper.contains("F20")
+            || upper.contains("F21")
+            || upper.contains("F22")
+            || upper.contains("F23")
+            || upper.contains("F87")
+        {
+            Self::F20
+        } else if upper.contains("F30")
+            || upper.contains("F31")
+            || upper.contains("F32")
+            || upper.contains("F33")
+            || upper.contains("F36")
+            || upper.contains("F80")
+            || upper.contains("F82")
+        {
+            Self::F30
         } else {
             Self::Other(upper)
         }
     }
 
-    /// Returns the shared ECU platform family (e.g. E87 & E90 & E84 all share `E8xE9x`).
+    /// Returns the shared ECU platform family (e.g. E87 & E90 share `E8xE9x`; F10/F20/F30 share `Fxx`).
     pub fn platform_family(&self) -> &'static str {
         match self {
             Chassis::E46 => "E46",
             Chassis::E87 | Chassis::E90 | Chassis::E84 => "E8xE9x",
             Chassis::E60 => "E60",
+            Chassis::F10 | Chassis::F20 | Chassis::F30 => "Fxx",
             Chassis::Other(_) => "GENERIC",
         }
     }
@@ -60,6 +85,9 @@ impl fmt::Display for Chassis {
             Chassis::E90 => write!(f, "E90 (3-Series)"),
             Chassis::E60 => write!(f, "E60 (5-Series)"),
             Chassis::E84 => write!(f, "E84 (X1)"),
+            Chassis::F10 => write!(f, "F10 (5-Series)"),
+            Chassis::F20 => write!(f, "F20 (1/2-Series)"),
+            Chassis::F30 => write!(f, "F30 (3/4-Series)"),
             Chassis::Other(s) => write!(f, "{s}"),
         }
     }

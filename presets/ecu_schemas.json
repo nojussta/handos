@@ -38,5 +38,52 @@
         "values": { "nicht_aktiv": 0, "aktiv": 1 }
       }
     ]
+  },
+  {
+    "ecu_name": "FEM_BODY",
+    "coding_index_prefix": "FEM_01",
+    "params": [
+      {
+        "parameter": "TCM_MSA_MEMORY",
+        "block_id": 12320,
+        "byte_offset": 0,
+        "bitmask": 1,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      },
+      {
+        "parameter": "TCM_MSA_DEFAULT_OFF",
+        "block_id": 12320,
+        "byte_offset": 0,
+        "bitmask": 2,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      },
+      {
+        "parameter": "ASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN",
+        "block_id": 12320,
+        "byte_offset": 1,
+        "bitmask": 1,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      },
+      {
+        "parameter": "SIDEMARKER_US",
+        "block_id": 12320,
+        "byte_offset": 2,
+        "bitmask": 1,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      }
+    ]
+  },
+  {
+    "ecu_name": "KOMBI",
+    "coding_index_prefix": "KOMBI_F",
+    "params": [
+      {
+        "parameter": "BC_DIGITAL_V",
+        "block_id": 12288,
+        "byte_offset": 0,
+        "bitmask": 1,
+        "values": { "nicht_aktiv": 0, "aktiv": 1 }
+      }
+    ]
   }
 ]

@@ -69,12 +69,16 @@ fn saves_lists_and_loads_backups() {
 }
 
 #[test]
-fn builtin_presets_support_e46_e87_and_e90() {
+fn builtin_presets_support_e46_e87_e90_and_f_series() {
     let presets = builtin_presets();
     let e46 = presets.iter().find(|p| p.id == "e46_usdm_corners").unwrap();
     let e8x_e9x = presets
         .iter()
         .find(|p| p.id == "e8x_e9x_usdm_corners")
+        .unwrap();
+    let fxx = presets
+        .iter()
+        .find(|p| p.id == "fxx_start_stop_memory")
         .unwrap();
 
     assert!(e46.supports_chassis(&Chassis::E46));
@@ -83,6 +87,11 @@ fn builtin_presets_support_e46_e87_and_e90() {
     assert!(e8x_e9x.supports_chassis(&Chassis::E87));
     assert!(e8x_e9x.supports_chassis(&Chassis::E90));
     assert!(e8x_e9x.supports_chassis(&Chassis::E84));
+
+    assert!(fxx.supports_chassis(&Chassis::F10));
+    assert!(fxx.supports_chassis(&Chassis::F20));
+    assert!(fxx.supports_chassis(&Chassis::F30));
+    assert!(!fxx.supports_chassis(&Chassis::E90));
 }
 
 #[test]

@@ -53,7 +53,7 @@
   },
   {
     "id": "e8x_e9x_usdm_corners",
-    "title": "USDM Corner Lights (1-Series / 3-Series)",
+    "title": "USDM Corner Lights (E8x / E9x)",
     "description": "Enables US-spec dimmed front turn signals as sidemarkers on E8x/E9x FRM/NFRM.",
     "platform_families": ["E8xE9x"],
     "target_ecu": "FRM",
@@ -72,7 +72,7 @@
   },
   {
     "id": "e8x_e9x_double_hazard",
-    "title": "Double Hazard Lights (1-Series / 3-Series)",
+    "title": "Double Hazard Lights (E8x / E9x)",
     "description": "Enables double-impulse hazard warning blink on E8x/E9x FRM/NFRM.",
     "platform_families": ["E8xE9x"],
     "target_ecu": "FRM",
@@ -86,7 +86,7 @@
   },
   {
     "id": "e8x_e9x_start_stop_memory",
-    "title": "Auto Start/Stop Memory (1-Series / 3-Series)",
+    "title": "Auto Start/Stop Memory (E8x / E9x)",
     "description": "Remembers last Auto Start/Stop button state across ignition cycles on E8x/E9x IHKA.",
     "platform_families": ["E8xE9x"],
     "target_ecu": "IHKA",
@@ -100,7 +100,7 @@
   },
   {
     "id": "e8x_e9x_digital_speedo",
-    "title": "Digital Speedometer (1-Series / 3-Series)",
+    "title": "Digital Speedometer (E8x / E9x)",
     "description": "Adds true/uncorrected digital speed readout to E8x/E9x KOMBI cluster BC.",
     "platform_families": ["E8xE9x"],
     "target_ecu": "KOMBI",
@@ -114,6 +114,90 @@
         "parameter": "BC_DIGITAL_V_KORREKTUR",
         "value": "nicht_aktiv",
         "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_start_stop_memory",
+    "title": "Auto Start/Stop Memory (F-Series)",
+    "description": "Remembers last Auto Start/Stop state across ignition cycles on F-Series FEM_BODY.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "FEM_BODY",
+    "changes": [
+      {
+        "parameter": "TCM_MSA_MEMORY",
+        "value": "aktiv",
+        "aliases": ["MSA_MEMORY"]
+      }
+    ]
+  },
+  {
+    "id": "fxx_start_stop_off_default",
+    "title": "Auto Start/Stop Off by Default (F-Series)",
+    "description": "Defaults Auto Start/Stop to OFF on every engine start on F-Series FEM_BODY.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "FEM_BODY",
+    "changes": [
+      {
+        "parameter": "TCM_MSA_DEFAULT_OFF",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_digital_speedo",
+    "title": "Digital Speedometer (F-Series)",
+    "description": "Enables digital speed readout in the F-Series KOMBI instrument cluster.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "KOMBI",
+    "changes": [
+      {
+        "parameter": "BC_DIGITAL_V",
+        "value": "aktiv",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "id": "fxx_mirrors_fold_lock",
+    "title": "Fold Mirrors on Lock (F-Series)",
+    "description": "Folds side mirrors automatically when locking with key fob or comfort access.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "FEM_BODY",
+    "changes": [
+      {
+        "parameter": "ASP_BEIKLAPPEN_BEI_KOMFORTSCHLIESSEN",
+        "value": "aktiv",
+        "aliases": ["KOMFORT_SCHLIESSEN"]
+      }
+    ]
+  },
+  {
+    "id": "fxx_usdm_sidemarkers",
+    "title": "USDM Corner Sidemarkers (F-Series)",
+    "description": "Enables US-spec front amber sidemarker lights on F-Series FEM_BODY.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "FEM_BODY",
+    "changes": [
+      {
+        "parameter": "SIDEMARKER_US",
+        "value": "aktiv",
+        "aliases": ["MAPPING_SIDEMARKER_L_OUTPUT"]
+      }
+    ]
+  },
+  {
+    "id": "fxx_video_in_motion",
+    "title": "Video in Motion (F-Series iDrive)",
+    "description": "Removes iDrive video speed lock on F-Series HU_NBT / HU_ENTRYNAV.",
+    "platform_families": ["Fxx"],
+    "target_ecu": "HU_NBT",
+    "changes": [
+      {
+        "parameter": "SPEEDLOCK_X_KMH_MAX",
+        "value": "werte=FF",
+        "aliases": ["SPEEDLOCK_X_KMH_MIN"]
       }
     ]
   }
