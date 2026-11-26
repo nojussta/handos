@@ -22,6 +22,9 @@ pub enum HandosError {
     #[error("battery voltage too low ({voltage:.2}V < {minimum:.2}V) for safe coding")]
     LowVoltage { voltage: f32, minimum: f32 },
 
+    #[error("unsafe vehicle state for ECU write: {reason}")]
+    UnsafeVehicleState { reason: String },
+
     #[error("FSW_PSW parse error at line {line}: {message}")]
     FswPswParse { line: usize, message: String },
 

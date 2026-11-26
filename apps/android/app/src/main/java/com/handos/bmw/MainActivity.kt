@@ -675,6 +675,7 @@ fun HandosApp(
         } else {
             actionSummary
         }
+        val voltageBlocked = !demoMode && scannedVehicle != null && scannedVehicle!!.batteryVoltage < 11.5
         AlertDialog(
             onDismissRequest = { pendingConfirm = null },
             title = { Text(if (pending.enable) "Confirm Coding" else "Confirm Turn Off") },
@@ -685,18 +686,30 @@ fun HandosApp(
                     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                         Text(diffPreview, modifier = Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall)
                     }
-                    Text(
-                        "Safety: Keep ignition ON, do not unplug adapter, and ensure battery >= 11.5V (12.0V+ recommended).",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                    if (voltageBlocked) {
+                        Text(
+                            "BLOCKED: Battery voltage (${String.format("%.2f", scannedVehicle!!.batteryVoltage)}V) is below 11.50V. Connect a battery charger before coding.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    } else {
+                        Text(
+                            "Safety: Keep ignition ON with engine OFF, do not unplug adapter, and ensure battery >= 11.5V (12.0V+ recommended).",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    pendingConfirm = null
-                    executeCodingFlow(pending.item, pending.enable)
-                }) {
+                Button(
+                    enabled = !voltageBlocked,
+                    onClick = {
+                        pendingConfirm = null
+                        executeCodingFlow(pending.item, pending.enable)
+                    },
+                ) {
                     Text(if (pending.enable) "Backup & Enable" else "Backup & Turn Off")
                 }
             },
@@ -1231,6 +1244,29 @@ fun HandosApp(
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(b.ecu, fontWeight = FontWeight.Medium)
                                                     Text(b.timestamp, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        val file = File(b.path)
+                                                        if (!file.exists()) {
+                                                            statusText = "Backup file not found on disk: ${b.path}"
+                                                            return@IconButton
+                                                        }
+                                                        val uri = FileProvider.getUriForFile(
+                                                            context,
+                                                            "${context.packageName}.fileprovider",
+                                                            file,
+                                                        )
+                                                        val share = Intent(Intent.ACTION_SEND).apply {
+                                                            type = "text/plain"
+                                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                                            putExtra(Intent.EXTRA_SUBJECT, "Handos ECU Backup ${b.ecu} (${b.timestamp})")
+                                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                        }
+                                                        context.startActivity(Intent.createChooser(share, "Export ${b.ecu} Backup"))
+                                                    },
+                                                ) {
+                                                    Icon(Icons.Rounded.Share, contentDescription = "Export backup")
                                                 }
                                                 OutlinedButton(onClick = {
                                                     if (demoMode) statusText = "Demo: Restored ${b.ecu} from ${b.timestamp}."
