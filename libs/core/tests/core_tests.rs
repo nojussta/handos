@@ -442,3 +442,41 @@ fn ffi_session_pool_reuses_connection_and_disconnects() {
 
     handle.join().unwrap();
 }
+
+#[test]
+fn isotp_single_and_multi_frame_roundtrip() {
+    use handos_core::{FlowStatus, IsoTpCodec};
+
+    let short = b"PING";
+    let sf = IsoTpCodec::segment(short).unwrap();
+    assert_eq!(sf.len(), 1);
+    assert_eq!(IsoTpCodec::reassemble(&sf).unwrap(), short);
+
+    // 140 bytes requires FF + >16 CFs, exercising sequence number wraparound (15 -> 0)
+    let long: Vec<u8> = (0..140u8).collect();
+    let frames = IsoTpCodec::segment(&long).unwrap();
+    assert!(frames.len() > 17);
+    assert_eq!(IsoTpCodec::reassemble(&frames).unwrap(), long);
+
+    let fc = IsoTpCodec::flow_control(FlowStatus::ContinueToSend, 8, 10);
+    assert_eq!(&fc[..3], &[0x30, 8, 10]);
+
+    let mut bad_frames = frames.clone();
+    bad_frames[2][0] = 0x2F;
+    assert!(IsoTpCodec::reassemble(&bad_frames).is_err());
+}
+
+#[test]
+fn kline_fast_init_and_five_baud_handshake() {
+    use handos_core::{KlineInit, KwpPacket};
+
+    let req = KlineInit::fast_init_request(0x12).unwrap();
+    let decoded_req = KwpPacket::decode(&req).unwrap();
+    assert_eq!(decoded_req.target, 0x12);
+    assert_eq!(decoded_req.payload, vec![0x81]);
+
+    let resp = KwpPacket::new(0xF4, vec![0xC1, 0xEA, 0x8F]).encode().unwrap();
+    let (kb1, kb2) = KlineInit::validate_fast_init_response(&resp).unwrap();
+    assert_eq!((kb1, kb2), (0xEA, 0x8F));
+    assert_eq!(KlineInit::five_baud_ack_byte(0x8F), 0x70);
+}

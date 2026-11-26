@@ -19,7 +19,7 @@ pub use backup::BackupManager;
 pub use dtc_catalog::resolve_dtc_description;
 pub use error::{HandosError, Result};
 pub use fsw_psw::{parse_sp_daten_defs, FswPswFile, SpDatenParamDef};
-pub use kwp_ds2::{kwp_jobs, Ds2Packet, KwpPacket};
+pub use kwp_ds2::{kwp_jobs, Ds2Packet, FlowStatus, IsoTpCodec, KlineInit, KwpPacket};
 pub use live_data::{DataLogger, TelemetrySample};
 pub use nbt_evo_aa::{
     install_nbt_evo_android_auto, run_nbt_evo_preflight, scan_nbt_evo_preflight, HeadUnitSshClient,
