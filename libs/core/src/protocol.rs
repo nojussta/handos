@@ -37,11 +37,14 @@ impl TryFrom<u16> for PayloadType {
 /// KWP2000 / UDS-style Service IDs used by Handos.
 pub mod sid {
     pub const ADAPTER_SCAN: u8 = 0x01;
+    pub const START_DIAGNOSTIC_SESSION: u8 = 0x10;
+    pub const ECU_RESET: u8 = 0x11;
     pub const READ_ECU_ID: u8 = 0x1A;
     pub const READ_CODING_DATA: u8 = 0x21;
     pub const READ_TELEMETRY: u8 = 0x22;
     pub const SERVICE_ROUTINE: u8 = 0x31;
     pub const WRITE_CODING_DATA: u8 = 0x3B;
+    pub const TESTER_PRESENT: u8 = 0x3E;
     pub const READ_DTC: u8 = 0x18;
     pub const CLEAR_DTC: u8 = 0x14;
     pub const NEGATIVE_RESPONSE: u8 = 0x7F;
@@ -75,6 +78,10 @@ impl DiagnosticFrame {
 
     pub fn diagnostic(target: u8, payload: Vec<u8>) -> Self {
         Self::new(PayloadType::Diagnostic, TESTER_ADDRESS, target, payload)
+    }
+
+    pub fn tester_present(target: u8) -> Self {
+        Self::diagnostic(target, vec![sid::TESTER_PRESENT, 0x00])
     }
 
     pub fn adapter_control(payload: Vec<u8>) -> Self {
