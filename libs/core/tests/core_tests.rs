@@ -384,3 +384,61 @@ fn kdcan_fd_endpoint_rejects_invalid_descriptors() {
     assert!(neg.contains("\"ok\":false"));
     assert!(neg.contains("negative USB file descriptor"));
 }
+
+#[test]
+fn ffi_session_pool_reuses_connection_and_disconnects() {
+    use handos_core::{DiagnosticFrame, PayloadType};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let accept_count = Arc::new(AtomicUsize::new(0));
+    let accept_count_bg = Arc::clone(&accept_count);
+
+    let handle = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            accept_count_bg.fetch_add(1, Ordering::SeqCst);
+            for _ in 0..2 {
+                let Ok(_req) = DiagnosticFrame::read_from(&mut stream) else {
+                    break;
+                };
+                let sample = serde_json::json!({
+                    "timestamp_ms": 1234,
+                    "battery_voltage": 12.6,
+                    "rpm": 0,
+                    "coolant_temp_c": 45.0,
+                    "oil_temp_c": 42.0,
+                    "boost_kpa": 100.0,
+                    "intake_temp_c": 22.0,
+                    "vehicle_speed_kmh": 0.0
+                });
+                let mut payload = vec![0x62];
+                payload.extend_from_slice(&serde_json::to_vec(&sample).unwrap());
+                let resp = DiagnosticFrame {
+                    payload_type: PayloadType::Diagnostic,
+                    source: 0xF4,
+                    target: 0xF1,
+                    payload,
+                };
+                resp.write_to(&mut stream).unwrap();
+            }
+        }
+    });
+
+    let dir = TempDir::new().unwrap();
+    let dir_str = dir.path().to_str().unwrap();
+
+    let r1 = handos_core::ffi::read_telemetry_json(&addr, dir_str);
+    let r2 = handos_core::ffi::read_telemetry_json(&addr, dir_str);
+    assert!(r1.contains("\"ok\":true"), "r1={r1}");
+    assert!(r2.contains("\"ok\":true"), "r2={r2}");
+    assert_eq!(accept_count.load(Ordering::SeqCst), 1);
+
+    let disc = handos_core::ffi::disconnect_session_json();
+    assert!(disc.contains("\"data\":true"));
+    let disc2 = handos_core::ffi::disconnect_session_json();
+    assert!(disc2.contains("\"data\":false"));
+
+    handle.join().unwrap();
+}
