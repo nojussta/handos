@@ -15,6 +15,7 @@ object HandosBridge {
     }
 
     external fun nativeDiscoverMhdEndpoints(extraCandidatesCsv: String, timeoutMs: Int): String
+    external fun nativeDisconnect(): String
     external fun nativeScanVehicle(host: String, backupDir: String): String
     external fun nativeApplyPreset(host: String, presetId: String, backupDir: String): String
     external fun nativeRevertPreset(host: String, presetId: String, backupDir: String): String

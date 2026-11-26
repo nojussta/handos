@@ -6,6 +6,7 @@ use crate::transport::{KdcanProtocolMode, KdcanSerialTransport, MhdWifiTransport
 use serde::Serialize;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 fn connect_transport(endpoint: &str) -> crate::Result<Box<dyn Transport>> {
@@ -52,6 +53,75 @@ fn connect_transport(endpoint: &str) -> crate::Result<Box<dyn Transport>> {
     )?))
 }
 
+struct CachedSession {
+    host: String,
+    backup_dir: String,
+    session: HandosSession<Box<dyn Transport>>,
+}
+
+fn session_pool() -> &'static Mutex<Option<CachedSession>> {
+    static POOL: OnceLock<Mutex<Option<CachedSession>>> = OnceLock::new();
+    POOL.get_or_init(|| Mutex::new(None))
+}
+
+fn with_session<T, F>(host: &str, backup_dir: &str, mut op: F) -> crate::Result<T>
+where
+    F: FnMut(&mut HandosSession<Box<dyn Transport>>) -> crate::Result<T>,
+{
+    if host.starts_with("kdcan-fd://") {
+        let transport = connect_transport(host)?;
+        let backups = BackupManager::new(backup_dir)?;
+        let mut session = HandosSession::new(transport, backups);
+        return op(&mut session);
+    }
+
+    let mut guard = session_pool()
+        .lock()
+        .map_err(|_| HandosError::Protocol("session pool lock poisoned".to_string()))?;
+
+    let matches = guard
+        .as_ref()
+        .map(|c| c.host == host && c.backup_dir == backup_dir)
+        .unwrap_or(false);
+    if !matches {
+        *guard = None;
+    }
+
+    if let Some(cached) = guard.as_mut() {
+        match op(&mut cached.session) {
+            Ok(val) => return Ok(val),
+            Err(HandosError::Io(_)) | Err(HandosError::Connection { .. }) => {
+                // Drop stale socket and reconnect once below.
+                *guard = None;
+            }
+            Err(other) => return Err(other),
+        }
+    }
+
+    let transport = connect_transport(host)?;
+    let backups = BackupManager::new(backup_dir)?;
+    let mut session = HandosSession::new(transport, backups);
+    let result = op(&mut session)?;
+    *guard = Some(CachedSession {
+        host: host.to_string(),
+        backup_dir: backup_dir.to_string(),
+        session,
+    });
+    Ok(result)
+}
+
+pub fn disconnect_session_json() -> String {
+    let res = (|| -> crate::Result<bool> {
+        let mut guard = session_pool()
+            .lock()
+            .map_err(|_| HandosError::Protocol("session pool lock poisoned".to_string()))?;
+        let had_session = guard.is_some();
+        *guard = None;
+        Ok(had_session)
+    })();
+    to_json_response(res)
+}
+
 #[derive(Serialize)]
 struct FfiResponse<T: Serialize> {
     ok: bool,
@@ -77,12 +147,7 @@ fn to_json_response<T: Serialize>(res: crate::Result<T>) -> String {
 }
 
 pub fn scan_vehicle_json(host: &str, backup_dir: &str) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
-        session.scan_vehicle()
-    })();
+    let res = with_session(host, backup_dir, |session| session.scan_vehicle());
     to_json_response(res)
 }
 
@@ -100,25 +165,19 @@ fn set_preset_enabled_json(host: &str, preset_id: &str, backup_dir: &str, enable
             .into_iter()
             .find(|p| p.id == preset_id)
             .ok_or_else(|| crate::HandosError::Protocol(format!("unknown preset '{preset_id}'")))?;
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
-        if enable {
-            session.apply_preset_safely(&preset)
-        } else {
-            session.revert_preset_safely(&preset)
-        }
+        with_session(host, backup_dir, |session| {
+            if enable {
+                session.apply_preset_safely(&preset)
+            } else {
+                session.revert_preset_safely(&preset)
+            }
+        })
     })();
     to_json_response(res)
 }
 
 pub fn preset_statuses_json(host: &str, backup_dir: &str) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
-        session.check_presets_status()
-    })();
+    let res = with_session(host, backup_dir, |session| session.check_presets_status());
     to_json_response(res)
 }
 
@@ -136,10 +195,7 @@ pub fn restore_backup_json(
     backup_path: &str,
     backup_dir: &str,
 ) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
+    let res = with_session(host, backup_dir, |session| {
         let vehicle = session.scan_vehicle()?;
         let ecu = vehicle
             .ecus
@@ -148,7 +204,7 @@ pub fn restore_backup_json(
             .cloned()
             .ok_or_else(|| crate::HandosError::Protocol(format!("ECU '{ecu_name}' not found")))?;
         session.restore_backup(&ecu, backup_path)
-    })();
+    });
     to_json_response(res)
 }
 
@@ -164,31 +220,18 @@ pub fn run_service_job_json(host: &str, job_id: &str, backup_dir: &str) -> Strin
                 )))
             }
         };
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
-        session.run_service_job(job)
+        with_session(host, backup_dir, |session| session.run_service_job(job))
     })();
     to_json_response(res)
 }
 
 pub fn read_telemetry_json(host: &str, backup_dir: &str) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
-        session.read_live_telemetry()
-    })();
+    let res = with_session(host, backup_dir, |session| session.read_live_telemetry());
     to_json_response(res)
 }
 
 pub fn read_ecu_params_json(host: &str, ecu_name: &str, backup_dir: &str) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
-        session.read_ecu_params(ecu_name)
-    })();
+    let res = with_session(host, backup_dir, |session| session.read_ecu_params(ecu_name));
     to_json_response(res)
 }
 
@@ -199,41 +242,32 @@ pub fn set_ecu_param_json(
     value: &str,
     backup_dir: &str,
 ) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
+    let res = with_session(host, backup_dir, |session| {
         session.apply_single_param_safely(ecu_name, parameter, value)
-    })();
+    });
     to_json_response(res)
 }
 
 pub fn read_dtcs_json(host: &str, backup_dir: &str) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
+    let res = with_session(host, backup_dir, |session| {
         let info = session.scan_vehicle()?;
         let mut all = Vec::new();
         for ecu in &info.ecus {
             all.extend(session.read_dtcs(ecu)?);
         }
         Ok(all)
-    })();
+    });
     to_json_response(res)
 }
 
 pub fn clear_dtcs_json(host: &str, backup_dir: &str) -> String {
-    let res = (|| {
-        let transport = connect_transport(host)?;
-        let backups = BackupManager::new(backup_dir)?;
-        let mut session = HandosSession::new(transport, backups);
+    let res = with_session(host, backup_dir, |session| {
         let info = session.scan_vehicle()?;
         for ecu in &info.ecus {
             session.clear_dtcs(ecu)?;
         }
         Ok(info.ecus.len())
-    })();
+    });
     to_json_response(res)
 }
 
@@ -326,6 +360,16 @@ mod android_jni {
         env.get_string(&s)
             .map(|js| js.to_string_lossy().into_owned())
             .unwrap_or_default()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeDisconnect(
+        mut env: JNIEnv,
+        _class: JClass,
+    ) -> jstring {
+        env.new_string(disconnect_session_json())
+            .unwrap()
+            .into_raw()
     }
 
     #[no_mangle]
