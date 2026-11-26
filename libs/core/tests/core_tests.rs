@@ -345,3 +345,28 @@ fn refuses_unknown_parameter_and_empty_backup() {
         .save_backup("WBAVA31080NL54321", "FRM", &empty_trc)
         .is_err());
 }
+
+#[test]
+fn discovers_reachable_mhd_endpoints_in_parallel() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let active_addr = listener.local_addr().unwrap().to_string();
+    let dead_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let dead_addr = dead_listener.local_addr().unwrap().to_string();
+    drop(dead_listener);
+
+    let candidates = vec![dead_addr.clone(), active_addr.clone(), active_addr.clone()];
+    let found = handos_core::discover_mhd_endpoints(
+        std::time::Duration::from_millis(300),
+        &candidates,
+    );
+    assert!(found.contains(&active_addr));
+    assert!(!found.contains(&dead_addr));
+    assert_eq!(found.iter().filter(|a| *a == &active_addr).count(), 1);
+
+    let json = handos_core::ffi::discover_mhd_endpoints_json(
+        &format!("{dead_addr},{active_addr}"),
+        300,
+    );
+    assert!(json.contains("\"ok\":true"));
+    assert!(json.contains(&active_addr));
+}

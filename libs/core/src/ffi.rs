@@ -192,6 +192,20 @@ pub fn clear_dtcs_json(host: &str, backup_dir: &str) -> String {
     to_json_response(res)
 }
 
+pub fn discover_mhd_endpoints_json(extra_candidates_csv: &str, timeout_ms: u64) -> String {
+    let extra: Vec<String> = extra_candidates_csv
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let clamped_ms = timeout_ms.clamp(100, 10_000);
+    let found = crate::transport::discover_mhd_endpoints(
+        Duration::from_millis(clamped_ms),
+        &extra,
+    );
+    to_json_response(Ok(found))
+}
+
 pub fn import_schema_json(schemas_dir: &str, file_name: &str, content: &str) -> String {
     let res = (|| -> crate::Result<usize> {
         let dir = std::path::Path::new(schemas_dir);
@@ -349,6 +363,20 @@ mod android_jni {
         let d = get_str(&mut env, backup_dir);
         let out = clear_dtcs_json(&h, &d);
         env.new_string(out).unwrap().into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_handos_bmw_HandosBridge_nativeDiscoverMhdEndpoints(
+        mut env: JNIEnv,
+        _class: JClass,
+        extra_candidates_csv: JString,
+        timeout_ms: jni::sys::jint,
+    ) -> jstring {
+        let extra = get_str(&mut env, extra_candidates_csv);
+        let ms = timeout_ms.max(100) as u64;
+        env.new_string(discover_mhd_endpoints_json(&extra, ms))
+            .unwrap()
+            .into_raw()
     }
 
     #[no_mangle]

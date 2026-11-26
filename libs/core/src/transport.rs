@@ -20,15 +20,48 @@ pub enum TransportMode {
     LiveEnet,
 }
 
-/// Probes common MHD Universal WiFi adapter endpoints and returns the first reachable one.
-pub fn discover_mhd_endpoint(timeout: Duration) -> Option<String> {
-    let candidates = [
+/// Probes candidate MHD Universal WiFi adapter endpoints in parallel and returns all reachable ones.
+pub fn discover_mhd_endpoints(timeout: Duration, extra_candidates: &[String]) -> Vec<String> {
+    let mut candidates = Vec::new();
+    for c in extra_candidates {
+        let trimmed = c.trim();
+        if !trimmed.is_empty() && !candidates.iter().any(|existing| existing == trimmed) {
+            candidates.push(trimmed.to_string());
+        }
+    }
+    for default_addr in [
         format!("{DEFAULT_MHD_WIFI_HOST}:{DEFAULT_MHD_WIFI_PORT}"),
         format!("192.168.1.1:{DEFAULT_MHD_WIFI_PORT}"),
-    ];
-    candidates
-        .into_iter()
-        .find(|candidate| MhdWifiTransport::connect(candidate, timeout).is_ok())
+    ] {
+        if !candidates.iter().any(|existing| existing == &default_addr) {
+            candidates.push(default_addr);
+        }
+    }
+
+    std::thread::scope(|s| {
+        let handles: Vec<_> = candidates
+            .into_iter()
+            .map(|candidate| {
+                s.spawn(move || {
+                    if MhdWifiTransport::connect(&candidate, timeout).is_ok() {
+                        Some(candidate)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        handles
+            .into_iter()
+            .filter_map(|h| h.join().ok().flatten())
+            .collect()
+    })
+}
+
+/// Probes common MHD Universal WiFi adapter endpoints and returns the first reachable one.
+pub fn discover_mhd_endpoint(timeout: Duration) -> Option<String> {
+    discover_mhd_endpoints(timeout, &[]).into_iter().next()
 }
 
 /// Serial baud/bus mode for standard FTDI K+DCAN USB cables.

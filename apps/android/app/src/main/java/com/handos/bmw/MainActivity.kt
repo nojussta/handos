@@ -1,7 +1,15 @@
 package com.handos.bmw
 
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -11,7 +19,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.handos.bmw.ui.theme.HandosTheme
 import kotlinx.coroutines.Dispatchers
@@ -209,7 +220,11 @@ fun HandosApp(
     var selectedTab by remember { mutableIntStateOf(0) }
     var adapterMode by remember { mutableStateOf("mhd_wifi") }
     var host by remember { mutableStateOf(HandosBridge.DEFAULT_MHD_HOST) }
-    var statusText by remember { mutableStateOf("Connect via MHD WiFi or K+DCAN USB, or run Demo Simulation.") }
+    var detectedAdapters by remember { mutableStateOf<List<DetectedAdapter>>(emptyList()) }
+    var selectedAdapterId by remember { mutableStateOf<String?>(null) }
+    var isDetectingAdapters by remember { mutableStateOf(false) }
+    var showManualEndpoint by remember { mutableStateOf(false) }
+    var statusText by remember { mutableStateOf("Scanning for MHD WiFi and K+DCAN USB adapters...") }
     var busy by remember { mutableStateOf(false) }
     var demoMode by remember { mutableStateOf(false) }
     var scannedVehicle by remember { mutableStateOf<VehicleUi?>(null) }
@@ -487,6 +502,110 @@ fun HandosApp(
                 )
                 statusText = "Error: $errMsg"
             }
+        }
+    }
+
+    fun selectAdapter(adapter: DetectedAdapter) {
+        selectedAdapterId = adapter.id
+        showManualEndpoint = false
+        when (adapter.kind) {
+            AdapterKind.MHD_WIFI -> {
+                adapterMode = "mhd_wifi"
+                host = adapter.endpoint
+                onBindWifi()
+                statusText = "Selected ${adapter.name} (${adapter.endpoint})."
+            }
+            AdapterKind.KDCAN_USB -> {
+                adapterMode = "kdcan_usb"
+                if (adapter.needsPermission) {
+                    statusText = KdcanUsbManager.probeOrRequestPermission(context, adapter.endpoint).message
+                } else {
+                    statusText = "Selected ${adapter.name}: ${adapter.detail}"
+                }
+            }
+        }
+    }
+
+    fun refreshAdapters(autoSelect: Boolean = true) {
+        scope.launch {
+            isDetectingAdapters = true
+            val extra = if (host.isNotBlank()) listOf(host) else emptyList()
+            val found = AdapterDiscovery.detectAll(context, extra)
+            detectedAdapters = found
+
+            val current = found.firstOrNull { it.id == selectedAdapterId }
+            val chosen = current ?: if (autoSelect && !showManualEndpoint) {
+                found.firstOrNull { it.isReady } ?: found.firstOrNull()
+            } else {
+                null
+            }
+
+            if (chosen != null) {
+                selectedAdapterId = chosen.id
+                when (chosen.kind) {
+                    AdapterKind.MHD_WIFI -> {
+                        adapterMode = "mhd_wifi"
+                        host = chosen.endpoint
+                    }
+                    AdapterKind.KDCAN_USB -> {
+                        adapterMode = "kdcan_usb"
+                    }
+                }
+                if (scannedVehicle == null && !demoMode) {
+                    statusText = if (found.size > 1) {
+                        "Detected ${found.size} adapters. Choose which one to use below."
+                    } else {
+                        "Detected ${chosen.name} (${chosen.detail}). Ready to scan."
+                    }
+                }
+            } else if (!showManualEndpoint && scannedVehicle == null && !demoMode) {
+                selectedAdapterId = null
+                statusText = "No adapter detected. Connect to MHD WiFi or plug in a K+DCAN USB cable."
+            }
+            isDetectingAdapters = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshAdapters(autoSelect = true)
+    }
+
+    DisposableEffect(context) {
+        val usbReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    UsbManager.ACTION_USB_DEVICE_ATTACHED,
+                    UsbManager.ACTION_USB_DEVICE_DETACHED,
+                    KdcanUsbManager.ACTION_USB_PERMISSION -> {
+                        refreshAdapters(autoSelect = true)
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+            addAction(KdcanUsbManager.ACTION_USB_PERMISSION)
+        }
+        ContextCompat.registerReceiver(context, usbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val wifiRequest = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .build()
+        val networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                refreshAdapters(autoSelect = true)
+            }
+            override fun onLost(network: Network) {
+                refreshAdapters(autoSelect = true)
+            }
+        }
+        cm?.registerNetworkCallback(wifiRequest, networkCallback)
+
+        onDispose {
+            runCatching { context.unregisterReceiver(usbReceiver) }
+            runCatching { cm?.unregisterNetworkCallback(networkCallback) }
         }
     }
 
@@ -790,45 +909,154 @@ fun HandosApp(
                                     modifier = Modifier.padding(16.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
-                                    Text("Adapter Connection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        FilterChip(
-                                            selected = adapterMode == "mhd_wifi",
-                                            onClick = { adapterMode = "mhd_wifi" },
-                                            label = { Text("MHD WiFi") },
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        FilterChip(
-                                            selected = adapterMode == "kdcan_usb",
-                                            onClick = { adapterMode = "kdcan_usb" },
-                                            label = { Text("K+DCAN USB (OTG)") },
-                                            modifier = Modifier.weight(1f),
-                                        )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text("Adapter Connection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        TextButton(
+                                            enabled = !isDetectingAdapters && !busy,
+                                            onClick = { refreshAdapters(autoSelect = true) },
+                                        ) {
+                                            if (isDetectingAdapters) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    strokeWidth = 2.dp,
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text("Detecting...")
+                                            } else {
+                                                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Detect")
+                                            }
+                                        }
                                     }
-                                    if (adapterMode == "mhd_wifi") {
+
+                                    if (detectedAdapters.isNotEmpty()) {
+                                        Text(
+                                            if (detectedAdapters.size > 1) {
+                                                "Multiple adapters detected. Choose which one to use:"
+                                            } else {
+                                                "Detected adapter:"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            detectedAdapters.forEach { adapter ->
+                                                val isSelected = !showManualEndpoint && selectedAdapterId == adapter.id
+                                                Surface(
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (isSelected) {
+                                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                                    },
+                                                    border = BorderStroke(
+                                                        width = if (isSelected) 1.5.dp else 1.dp,
+                                                        color = if (isSelected) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.outlineVariant
+                                                        },
+                                                    ),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable(enabled = !busy) { selectAdapter(adapter) },
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (adapter.kind == AdapterKind.MHD_WIFI) Icons.Rounded.Wifi else Icons.Rounded.Usb,
+                                                            contentDescription = null,
+                                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                adapter.name,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                            )
+                                                            Text(
+                                                                adapter.detail,
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            )
+                                                        }
+                                                        RadioButton(
+                                                            selected = isSelected,
+                                                            onClick = { selectAdapter(adapter) },
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if (!isDetectingAdapters) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Text(
+                                                "No MHD WiFi or K+DCAN USB adapter detected. Connect to the MHD WiFi AP or plug in a K+DCAN USB OTG cable, then tap Detect.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(12.dp),
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                showManualEndpoint = !showManualEndpoint
+                                                if (showManualEndpoint) {
+                                                    adapterMode = "mhd_wifi"
+                                                    selectedAdapterId = null
+                                                } else if (detectedAdapters.isNotEmpty()) {
+                                                    selectAdapter(detectedAdapters.first())
+                                                }
+                                            },
+                                        ) {
+                                            Text(if (showManualEndpoint) "Hide Manual IP" else "Manual IP")
+                                        }
+                                    }
+
+                                    AnimatedVisibility(visible = showManualEndpoint) {
                                         OutlinedTextField(
                                             value = host,
-                                            onValueChange = { host = it },
-                                            label = { Text("MHD WiFi Endpoint") },
+                                            onValueChange = {
+                                                host = it
+                                                adapterMode = "mhd_wifi"
+                                            },
+                                            label = { Text("MHD WiFi Endpoint (Custom)") },
                                             singleLine = true,
                                             shape = RoundedCornerShape(12.dp),
                                             modifier = Modifier.fillMaxWidth(),
                                         )
-                                    } else {
-                                        Text(
-                                            "Connect a standard FTDI K+DCAN cable via USB-C OTG.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
                                     }
+
                                     Button(
-                                        enabled = !busy,
+                                        enabled = !busy && (showManualEndpoint || selectedAdapterId != null),
                                         shape = RoundedCornerShape(14.dp),
                                         modifier = Modifier.fillMaxWidth().height(50.dp),
                                         onClick = {
                                             demoMode = false
+                                            val activeAdapter = detectedAdapters.firstOrNull { it.id == selectedAdapterId }
                                             if (adapterMode == "kdcan_usb") {
-                                                statusText = KdcanUsbManager.probeOrRequestPermission(context).message
+                                                val probe = KdcanUsbManager.probeOrRequestPermission(context, activeAdapter?.endpoint)
+                                                statusText = probe.message
+                                                if (probe.hasPermission) {
+                                                    refreshAdapters(autoSelect = false)
+                                                }
                                                 return@Button
                                             }
                                             onBindWifi()
