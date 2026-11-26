@@ -178,6 +178,57 @@ impl<T: Transport> HandosSession<T> {
         self.apply_changes_mode_safely(vin, ecu, changes, true)
     }
 
+    /// Verifies battery voltage, link stability, engine-off (RPM == 0), and standstill before any ECU write.
+    fn verify_safe_write_conditions(&mut self) -> Result<()> {
+        let vehicle = match &self.cached_vehicle {
+            Some(v) => v.clone(),
+            None => self.scan_vehicle()?,
+        };
+        if !vehicle.battery_voltage.is_finite() || vehicle.battery_voltage < MIN_SAFE_CODING_VOLTAGE {
+            return Err(HandosError::LowVoltage {
+                voltage: vehicle.battery_voltage,
+                minimum: MIN_SAFE_CODING_VOLTAGE,
+            });
+        }
+
+        match self.read_live_telemetry() {
+            Ok(sample) => {
+                if !sample.battery_voltage.is_finite()
+                    || sample.battery_voltage < MIN_SAFE_CODING_VOLTAGE
+                {
+                    return Err(HandosError::LowVoltage {
+                        voltage: sample.battery_voltage,
+                        minimum: MIN_SAFE_CODING_VOLTAGE,
+                    });
+                }
+                if sample.rpm > 0 {
+                    return Err(HandosError::UnsafeVehicleState {
+                        reason: format!(
+                            "engine is running ({} RPM); turn engine off with ignition ON before coding",
+                            sample.rpm
+                        ),
+                    });
+                }
+                if sample.vehicle_speed_kmh > 0.5 {
+                    return Err(HandosError::UnsafeVehicleState {
+                        reason: format!(
+                            "vehicle is moving ({:.1} km/h); stop vehicle before coding",
+                            sample.vehicle_speed_kmh
+                        ),
+                    });
+                }
+            }
+            Err(HandosError::Io(e)) => return Err(HandosError::Io(e)),
+            Err(HandosError::Connection { address, reason }) => {
+                return Err(HandosError::Connection { address, reason });
+            }
+            Err(_) => {
+                // Gateway does not support live telemetry (SID 0x22); initial scan voltage check passed.
+            }
+        }
+        Ok(())
+    }
+
     fn apply_changes_mode_safely(
         &mut self,
         vin: &str,
@@ -192,6 +243,8 @@ impl<T: Transport> HandosSession<T> {
             )));
         }
 
+        self.verify_safe_write_conditions()?;
+
         let original = self.read_ecu_coding(ecu)?;
         if original.is_empty() {
             return Err(HandosError::Protocol(format!(
@@ -200,6 +253,13 @@ impl<T: Transport> HandosSession<T> {
             )));
         }
         let backup_entry = self.backups.save_backup(vin, &ecu.name, &original)?;
+        let verified_backup = self.backups.load_backup(&backup_entry.path)?;
+        if verified_backup.len() != original.len() {
+            return Err(HandosError::Backup(format!(
+                "pre-write backup verification failed for '{}'; aborting write",
+                backup_entry.path
+            )));
+        }
 
         let mut modified = original.clone();
         let diffs = if enable {
@@ -216,14 +276,35 @@ impl<T: Transport> HandosSession<T> {
             });
         }
 
+        if modified.len() != original.len() {
+            return Err(HandosError::Protocol(format!(
+                "pre-write integrity check failed for {}: parameter count changed ({} -> {})",
+                ecu.name,
+                original.len(),
+                modified.len()
+            )));
+        }
+        let roundtrip = FswPswFile::parse(&modified.to_trc_string())?;
+        if roundtrip.len() != modified.len() {
+            return Err(HandosError::Protocol(format!(
+                "pre-write TRC serialization check failed for {}; aborting write",
+                ecu.name
+            )));
+        }
+
         if let Err(write_err) = self.write_ecu_coding(ecu, &modified) {
-            // Attempt automatic rollback to original backup
             let _ = self.write_ecu_coding(ecu, &original);
             return Err(write_err);
         }
 
-        // Re-read and verify every changed parameter; rollback automatically on mismatch.
-        let verify_read = self.read_ecu_coding(ecu)?;
+        // Re-read and verify every changed parameter AND ensure no unrelated parameters were corrupted.
+        let verify_read = match self.read_ecu_coding(ecu) {
+            Ok(v) => v,
+            Err(read_err) => {
+                let _ = self.write_ecu_coding(ecu, &original);
+                return Err(read_err);
+            }
+        };
         for diff in &diffs {
             let actual = verify_read
                 .get_single(&diff.parameter)
@@ -239,6 +320,24 @@ impl<T: Transport> HandosSession<T> {
                 });
             }
         }
+        for (param, orig_vals) in original.entries() {
+            if diffs.iter().any(|d| d.parameter == *param) {
+                continue;
+            }
+            let actual_vals = verify_read.get(param);
+            if actual_vals != Some(orig_vals.as_slice()) {
+                let rollback_ok = self.write_ecu_coding(ecu, &original).is_ok();
+                return Err(HandosError::VerificationFailed {
+                    ecu: ecu.name.clone(),
+                    parameter: param.clone(),
+                    expected: orig_vals.join(","),
+                    actual: actual_vals
+                        .map(|v| v.join(","))
+                        .unwrap_or_else(|| "<missing>".to_string()),
+                    rollback_ok,
+                });
+            }
+        }
 
         Ok(CodingReport {
             ecu: ecu.name.clone(),
@@ -250,14 +349,7 @@ impl<T: Transport> HandosSession<T> {
 
     /// Restores an ECU from a previously saved `.trc` backup file, enforcing voltage & verification.
     pub fn restore_backup(&mut self, ecu: &EcuInfo, backup_path: &str) -> Result<Vec<CodingDiff>> {
-        if let Some(v) = &self.cached_vehicle {
-            if v.battery_voltage < MIN_SAFE_CODING_VOLTAGE {
-                return Err(HandosError::LowVoltage {
-                    voltage: v.battery_voltage,
-                    minimum: MIN_SAFE_CODING_VOLTAGE,
-                });
-            }
-        }
+        self.verify_safe_write_conditions()?;
         let backup_data = self.backups.load_backup(backup_path)?;
         if backup_data.is_empty() {
             return Err(HandosError::Backup(
@@ -265,19 +357,40 @@ impl<T: Transport> HandosSession<T> {
             ));
         }
         let current = self.read_ecu_coding(ecu)?;
-        let diffs = current.diff_against(&backup_data);
-        self.write_ecu_coding(ecu, &backup_data)?;
+        let has_overlap = backup_data
+            .entries()
+            .keys()
+            .any(|k| current.get(k).is_some());
+        if !has_overlap {
+            return Err(HandosError::Backup(format!(
+                "backup '{}' has no matching parameters for ECU '{}'; refusing cross-ECU restore",
+                backup_path, ecu.name
+            )));
+        }
 
-        let verify = self.read_ecu_coding(ecu)?;
+        let diffs = current.diff_against(&backup_data);
+        if let Err(write_err) = self.write_ecu_coding(ecu, &backup_data) {
+            let _ = self.write_ecu_coding(ecu, &current);
+            return Err(write_err);
+        }
+
+        let verify = match self.read_ecu_coding(ecu) {
+            Ok(v) => v,
+            Err(read_err) => {
+                let _ = self.write_ecu_coding(ecu, &current);
+                return Err(read_err);
+            }
+        };
         for diff in &diffs {
             let actual = verify.get_single(&diff.parameter).unwrap_or("<missing>");
             if actual != diff.new_value {
+                let rollback_ok = self.write_ecu_coding(ecu, &current).is_ok();
                 return Err(HandosError::VerificationFailed {
                     ecu: ecu.name.clone(),
                     parameter: diff.parameter.clone(),
                     expected: diff.new_value.clone(),
                     actual: actual.to_string(),
-                    rollback_ok: false,
+                    rollback_ok,
                 });
             }
         }

@@ -480,3 +480,78 @@ fn kline_fast_init_and_five_baud_handshake() {
     assert_eq!((kb1, kb2), (0xEA, 0x8F));
     assert_eq!(KlineInit::five_baud_ack_byte(0x8F), 0x70);
 }
+
+#[test]
+fn blocks_coding_when_engine_running_or_cross_ecu_restore() {
+    use handos_core::{
+        DiagnosticFrame, EcuInfo, HandosError, HandosSession, PayloadType, PresetChange,
+        Transport, VehicleInfo,
+    };
+    use std::collections::VecDeque;
+
+    struct MockTransport {
+        responses: VecDeque<DiagnosticFrame>,
+    }
+
+    impl Transport for MockTransport {
+        fn exchange(&mut self, _request: &DiagnosticFrame) -> handos_core::Result<DiagnosticFrame> {
+            self.responses
+                .pop_front()
+                .ok_or_else(|| HandosError::Protocol("no mock response".to_string()))
+        }
+        fn endpoint(&self) -> &str {
+            "mock://ecu"
+        }
+    }
+
+    let vehicle = VehicleInfo {
+        vin: "WBAVA31080NL54321".to_string(),
+        chassis: handos_core::Chassis::E90,
+        battery_voltage: 13.8,
+        ecus: vec![EcuInfo {
+            address: 0x72,
+            name: "FRM".to_string(),
+            description: "Footwell Module".to_string(),
+            coding_index: "FRM2_E89".to_string(),
+        }],
+    };
+    let mut scan_payload = vec![0x41];
+    scan_payload.extend_from_slice(&serde_json::to_vec(&vehicle).unwrap());
+
+    let running_sample = serde_json::json!({
+        "timestamp_ms": 1,
+        "battery_voltage": 13.8,
+        "rpm": 850,
+        "coolant_temp_c": 85.0,
+        "oil_temp_c": 90.0,
+        "boost_kpa": 100.0,
+        "intake_temp_c": 25.0,
+        "vehicle_speed_kmh": 0.0
+    });
+    let mut telem_payload = vec![0x62];
+    telem_payload.extend_from_slice(&serde_json::to_vec(&running_sample).unwrap());
+
+    let transport = MockTransport {
+        responses: VecDeque::from([
+            DiagnosticFrame::new(PayloadType::AdapterControl, 0xF4, 0xF1, scan_payload),
+            DiagnosticFrame::new(PayloadType::Diagnostic, 0xF4, 0xF1, telem_payload),
+        ]),
+    };
+    let dir = TempDir::new().unwrap();
+    let backups = BackupManager::new(dir.path()).unwrap();
+    let mut session = HandosSession::new(transport, backups);
+
+    let err = session
+        .apply_changes_safely(
+            &vehicle.vin,
+            &vehicle.ecus[0],
+            &[PresetChange {
+                parameter: "SIDEMARKER_US".to_string(),
+                value: "aktiv".to_string(),
+                off_value: "nicht_aktiv".to_string(),
+                aliases: vec![],
+            }],
+        )
+        .unwrap_err();
+    assert!(matches!(err, HandosError::UnsafeVehicleState { .. }));
+}

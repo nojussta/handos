@@ -17,6 +17,10 @@ impl FswPswFile {
         Self::default()
     }
 
+    pub fn entries(&self) -> &BTreeMap<String, Vec<String>> {
+        &self.entries
+    }
+
     /// Parses BMW `FSW_PSW.TRC` / `FSW_PSW.MAN` text format.
     ///
     /// Format example:

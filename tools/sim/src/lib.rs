@@ -233,12 +233,12 @@ impl SimulatedCar {
                     let sample = TelemetrySample {
                         timestamp_ms: 1_700_000_000_000,
                         battery_voltage: self.vehicle.battery_voltage,
-                        rpm: 2450,
+                        rpm: 0,
                         coolant_temp_c: 92.0,
                         oil_temp_c: 101.5,
                         boost_kpa: 165.0,
                         intake_temp_c: 34.0,
-                        vehicle_speed_kmh: 64.0,
+                        vehicle_speed_kmh: 0.0,
                     };
                     let mut body = vec![service + 0x40];
                     body.extend_from_slice(&serde_json::to_vec(&sample).unwrap());
