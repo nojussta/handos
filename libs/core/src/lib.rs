@@ -35,7 +35,7 @@ pub use schema_registry::{parse_ncsdummy_xml, SchemaRegistry};
 pub use service::{ServiceJob, ServiceReport};
 pub use session::{HandosSession, MIN_SAFE_CODING_VOLTAGE};
 pub use transport::{
-    discover_mhd_endpoint, AdapterType, KdcanProtocolMode, KdcanSerialTransport, MhdWifiTransport,
-    Transport, TransportMode,
+    discover_mhd_endpoint, discover_mhd_endpoints, AdapterType, KdcanProtocolMode,
+    KdcanSerialTransport, MhdWifiTransport, Transport, TransportMode,
 };
 pub use types::*;
