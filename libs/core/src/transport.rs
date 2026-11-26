@@ -88,6 +88,53 @@ pub trait Transport: Send {
     fn endpoint(&self) -> &str;
 }
 
+impl Transport for Box<dyn Transport> {
+    fn exchange(&mut self, request: &DiagnosticFrame) -> Result<DiagnosticFrame> {
+        (**self).exchange(request)
+    }
+
+    fn endpoint(&self) -> &str {
+        (**self).endpoint()
+    }
+}
+
+/// Non-owning stream wrapper around a Unix file descriptor (e.g. Android `UsbDeviceConnection.getFileDescriptor()`).
+/// Dropping this wrapper does NOT close the underlying descriptor, since Android's `UsbDeviceConnection` owns it.
+#[cfg(unix)]
+pub struct BorrowedFdStream {
+    file: std::mem::ManuallyDrop<std::fs::File>,
+}
+
+#[cfg(unix)]
+impl BorrowedFdStream {
+    /// # Safety
+    /// `fd` must be a valid, open file descriptor that outlives this `BorrowedFdStream`.
+    pub unsafe fn from_raw_fd(fd: std::os::unix::io::RawFd) -> Self {
+        use std::os::unix::io::FromRawFd;
+        Self {
+            file: std::mem::ManuallyDrop::new(std::fs::File::from_raw_fd(fd)),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Read for BorrowedFdStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        (&*self.file).read(buf)
+    }
+}
+
+#[cfg(unix)]
+impl Write for BorrowedFdStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        (&*self.file).write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        (&*self.file).flush()
+    }
+}
+
 /// TCP socket transport for the MHD Universal WiFi adapter (default `192.168.4.1:6801`).
 pub struct MhdWifiTransport {
     stream: TcpStream,
