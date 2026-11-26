@@ -355,7 +355,14 @@ fun HandosApp(
                 )
             } else if (HandosBridge.isNativeLoaded) {
                 val raw = withContext(Dispatchers.IO) {
-                    HandosBridge.nativeReadTelemetry(host, backupDir)
+                    if (adapterMode == "kdcan_usb") {
+                        val activeAdapter = detectedAdapters.firstOrNull { it.id == selectedAdapterId }
+                        KdcanUsbManager.withKdcanEndpoint(context, activeAdapter?.endpoint) { ep ->
+                            HandosBridge.nativeReadTelemetry(ep, backupDir)
+                        }
+                    } else {
+                        HandosBridge.nativeReadTelemetry(host, backupDir)
+                    }
                 }
                 val json = JSONObject(raw)
                 if (json.optBoolean("ok", false)) {
@@ -473,8 +480,16 @@ fun HandosApp(
             }
 
             val raw = withContext(Dispatchers.IO) {
-                if (enable) HandosBridge.nativeApplyPreset(host, item.id, backupDir)
-                else HandosBridge.nativeRevertPreset(host, item.id, backupDir)
+                if (adapterMode == "kdcan_usb") {
+                    val activeAdapter = detectedAdapters.firstOrNull { it.id == selectedAdapterId }
+                    KdcanUsbManager.withKdcanEndpoint(context, activeAdapter?.endpoint) { ep ->
+                        if (enable) HandosBridge.nativeApplyPreset(ep, item.id, backupDir)
+                        else HandosBridge.nativeRevertPreset(ep, item.id, backupDir)
+                    }
+                } else {
+                    if (enable) HandosBridge.nativeApplyPreset(host, item.id, backupDir)
+                    else HandosBridge.nativeRevertPreset(host, item.id, backupDir)
+                }
             }
             val json = JSONObject(raw)
             if (json.optBoolean("ok", false)) {
@@ -607,6 +622,17 @@ fun HandosApp(
             runCatching { context.unregisterReceiver(usbReceiver) }
             runCatching { cm?.unregisterNetworkCallback(networkCallback) }
         }
+    }
+
+    fun withActiveEndpoint(block: (String) -> String): String {
+        if (adapterMode == "kdcan_usb") {
+            val activeAdapter = detectedAdapters.firstOrNull { it.id == selectedAdapterId }
+            return KdcanUsbManager.withKdcanEndpoint(context, activeAdapter?.endpoint) { ep ->
+                block(ep)
+            }
+        }
+        onBindWifi()
+        return block(host)
     }
 
     fun runNative(
@@ -1053,13 +1079,14 @@ fun HandosApp(
                                             val activeAdapter = detectedAdapters.firstOrNull { it.id == selectedAdapterId }
                                             if (adapterMode == "kdcan_usb") {
                                                 val probe = KdcanUsbManager.probeOrRequestPermission(context, activeAdapter?.endpoint)
-                                                statusText = probe.message
-                                                if (probe.hasPermission) {
-                                                    refreshAdapters(autoSelect = false)
+                                                if (!probe.hasPermission) {
+                                                    statusText = probe.message
+                                                    return@Button
                                                 }
-                                                return@Button
+                                                refreshAdapters(autoSelect = false)
+                                            } else {
+                                                onBindWifi()
                                             }
-                                            onBindWifi()
                                             runNative(
                                                 "Scanning vehicle",
                                                 onSuccess = { data ->
@@ -1080,7 +1107,9 @@ fun HandosApp(
                                                     )
                                                     scannedVehicle = v
                                                     scope.launch {
-                                                        val sRaw = withContext(Dispatchers.IO) { HandosBridge.nativePresetStatuses(host, backupDir) }
+                                                        val sRaw = withContext(Dispatchers.IO) {
+                                                            withActiveEndpoint { ep -> HandosBridge.nativePresetStatuses(ep, backupDir) }
+                                                        }
                                                         val sJson = JSONObject(sRaw)
                                                         if (sJson.optBoolean("ok", false)) {
                                                             val arr = sJson.optJSONArray("data") ?: JSONArray()
@@ -1102,7 +1131,7 @@ fun HandosApp(
                                                         }
                                                     }
                                                 },
-                                            ) { HandosBridge.nativeScanVehicle(host, backupDir) }
+                                            ) { withActiveEndpoint { ep -> HandosBridge.nativeScanVehicle(ep, backupDir) } }
                                         },
                                     ) {
                                         Icon(Icons.Rounded.DirectionsCar, contentDescription = null)
@@ -1169,14 +1198,14 @@ fun HandosApp(
                                             modifier = Modifier.weight(1f),
                                             onClick = {
                                                 if (demoMode) statusText = "Demo: Registered new battery in DME/CAS."
-                                                else runNative("Registering battery") { HandosBridge.nativeRunServiceJob(host, "register_battery", backupDir) }
+                                                else runNative("Registering battery") { withActiveEndpoint { ep -> HandosBridge.nativeRunServiceJob(ep, "register_battery", backupDir) } }
                                             },
                                         ) { Text("Register Battery") }
                                         FilledTonalButton(
                                             modifier = Modifier.weight(1f),
                                             onClick = {
                                                 if (demoMode) statusText = "Demo: Oil service (CBS) reset."
-                                                else runNative("Resetting oil service") { HandosBridge.nativeRunServiceJob(host, "reset_oil_service", backupDir) }
+                                                else runNative("Resetting oil service") { withActiveEndpoint { ep -> HandosBridge.nativeRunServiceJob(ep, "reset_oil_service", backupDir) } }
                                             },
                                         ) { Text("Reset Oil CBS") }
                                     }
@@ -1205,7 +1234,7 @@ fun HandosApp(
                                                 }
                                                 OutlinedButton(onClick = {
                                                     if (demoMode) statusText = "Demo: Restored ${b.ecu} from ${b.timestamp}."
-                                                    else runNative("Restoring ${b.ecu}") { HandosBridge.nativeRestoreBackup(host, b.ecu, b.path, backupDir) }
+                                                    else runNative("Restoring ${b.ecu}") { withActiveEndpoint { ep -> HandosBridge.nativeRestoreBackup(ep, b.ecu, b.path, backupDir) } }
                                                 }) { Text("Restore") }
                                             }
                                         }
@@ -1277,7 +1306,7 @@ fun HandosApp(
                                                 statusText = "Demo Expert: ${p.name} -> $nextVal (backed up & verified)."
                                             } else {
                                                 runNative("Setting ${p.name}") {
-                                                    HandosBridge.nativeSetEcuParam(host, p.ecu, p.name, nextVal, backupDir)
+                                                    withActiveEndpoint { ep -> HandosBridge.nativeSetEcuParam(ep, p.ecu, p.name, nextVal, backupDir) }
                                                 }
                                             }
                                         }) {
@@ -1660,7 +1689,7 @@ fun HandosApp(
                                             )
                                         }
                                     },
-                                ) { HandosBridge.nativeReadDtcs(host, backupDir) }
+                                ) { withActiveEndpoint { ep -> HandosBridge.nativeReadDtcs(ep, backupDir) } }
                             },
                         ) {
                             Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -1678,7 +1707,7 @@ fun HandosApp(
                                     return@OutlinedButton
                                 }
                                 runNative("Clearing fault codes", onSuccess = { dtcs = emptyList() }) {
-                                    HandosBridge.nativeClearDtcs(host, backupDir)
+                                    withActiveEndpoint { ep -> HandosBridge.nativeClearDtcs(ep, backupDir) }
                                 }
                             },
                         ) {

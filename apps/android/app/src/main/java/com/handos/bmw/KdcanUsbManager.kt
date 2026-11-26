@@ -103,9 +103,13 @@ object KdcanUsbManager {
     /**
      * Opens the FTDI device and configures baud rate (115200 for D-CAN or 10400 for K-Line).
      */
-    fun openConfiguredConnection(context: Context, baudRate: Int = 115_200): UsbDeviceConnection? {
+    fun openConfiguredConnection(
+        context: Context,
+        baudRate: Int = 115_200,
+        deviceName: String? = null,
+    ): UsbDeviceConnection? {
         val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return null
-        val device = findKdcanDevice(context) ?: return null
+        val device = findKdcanDevice(context, deviceName) ?: return null
         if (!usbManager.hasPermission(device)) return null
         val conn = usbManager.openDevice(device) ?: return null
 
@@ -115,5 +119,29 @@ object KdcanUsbManager {
         conn.controlTransfer(0x40, 0x03, divisor, 0, null, 0, 1000)
         conn.controlTransfer(0x40, 0x04, 0x0008, 0, null, 0, 1000)
         return conn
+    }
+
+    /**
+     * Opens the K+DCAN USB device for the duration of [block], passing a `kdcan-fd://<fd>?baud=<rate>`
+     * endpoint descriptor to Rust FFI, and closes the USB connection cleanly afterward.
+     */
+    fun withKdcanEndpoint(
+        context: Context,
+        deviceName: String? = null,
+        baudRate: Int = 115_200,
+        block: (String) -> String,
+    ): String {
+        val conn = openConfiguredConnection(context, baudRate, deviceName)
+            ?: return """{"ok":false,"error":"K+DCAN USB cable not ready or permission denied."}"""
+        return try {
+            val fd = conn.fileDescriptor
+            if (fd < 0) {
+                """{"ok":false,"error":"Invalid USB file descriptor."}"""
+            } else {
+                block("kdcan-fd://$fd?baud=$baudRate")
+            }
+        } finally {
+            runCatching { conn.close() }
+        }
     }
 }

@@ -1,11 +1,56 @@
 use crate::backup::BackupManager;
+use crate::error::HandosError;
 use crate::presets::builtin_presets;
 use crate::session::HandosSession;
-use crate::transport::MhdWifiTransport;
+use crate::transport::{KdcanProtocolMode, KdcanSerialTransport, MhdWifiTransport, Transport};
 use serde::Serialize;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::time::Duration;
+
+fn connect_transport(endpoint: &str) -> crate::Result<Box<dyn Transport>> {
+    if let Some(rest) = endpoint.strip_prefix("kdcan-fd://") {
+        #[cfg(unix)]
+        {
+            let (fd_str, query) = rest.split_once('?').unwrap_or((rest, ""));
+            let fd: i32 = fd_str.trim().parse().map_err(|_| HandosError::Connection {
+                address: endpoint.to_string(),
+                reason: "invalid USB file descriptor".to_string(),
+            })?;
+            if fd < 0 {
+                return Err(HandosError::Connection {
+                    address: endpoint.to_string(),
+                    reason: "negative USB file descriptor".to_string(),
+                });
+            }
+            let mode = if query.contains("baud=10400") {
+                KdcanProtocolMode::Kline10400
+            } else {
+                KdcanProtocolMode::Dcan115200
+            };
+            // SAFETY: The caller (Android UsbDeviceConnection) keeps `fd` open for the duration of the FFI call.
+            let stream = unsafe { crate::transport::BorrowedFdStream::from_raw_fd(fd) };
+            return Ok(Box::new(KdcanSerialTransport::new(
+                stream,
+                mode,
+                endpoint.to_string(),
+            )));
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = rest;
+            return Err(HandosError::Connection {
+                address: endpoint.to_string(),
+                reason: "kdcan-fd:// transport is only supported on Unix/Android targets".to_string(),
+            });
+        }
+    }
+
+    Ok(Box::new(MhdWifiTransport::connect(
+        endpoint,
+        Duration::from_secs(5),
+    )?))
+}
 
 #[derive(Serialize)]
 struct FfiResponse<T: Serialize> {
@@ -33,7 +78,7 @@ fn to_json_response<T: Serialize>(res: crate::Result<T>) -> String {
 
 pub fn scan_vehicle_json(host: &str, backup_dir: &str) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         session.scan_vehicle()
@@ -55,7 +100,7 @@ fn set_preset_enabled_json(host: &str, preset_id: &str, backup_dir: &str, enable
             .into_iter()
             .find(|p| p.id == preset_id)
             .ok_or_else(|| crate::HandosError::Protocol(format!("unknown preset '{preset_id}'")))?;
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         if enable {
@@ -69,7 +114,7 @@ fn set_preset_enabled_json(host: &str, preset_id: &str, backup_dir: &str, enable
 
 pub fn preset_statuses_json(host: &str, backup_dir: &str) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         session.check_presets_status()
@@ -92,7 +137,7 @@ pub fn restore_backup_json(
     backup_dir: &str,
 ) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         let vehicle = session.scan_vehicle()?;
@@ -119,7 +164,7 @@ pub fn run_service_job_json(host: &str, job_id: &str, backup_dir: &str) -> Strin
                 )))
             }
         };
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         session.run_service_job(job)
@@ -129,7 +174,7 @@ pub fn run_service_job_json(host: &str, job_id: &str, backup_dir: &str) -> Strin
 
 pub fn read_telemetry_json(host: &str, backup_dir: &str) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         session.read_live_telemetry()
@@ -139,7 +184,7 @@ pub fn read_telemetry_json(host: &str, backup_dir: &str) -> String {
 
 pub fn read_ecu_params_json(host: &str, ecu_name: &str, backup_dir: &str) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         session.read_ecu_params(ecu_name)
@@ -155,7 +200,7 @@ pub fn set_ecu_param_json(
     backup_dir: &str,
 ) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         session.apply_single_param_safely(ecu_name, parameter, value)
@@ -165,7 +210,7 @@ pub fn set_ecu_param_json(
 
 pub fn read_dtcs_json(host: &str, backup_dir: &str) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         let info = session.scan_vehicle()?;
@@ -180,7 +225,7 @@ pub fn read_dtcs_json(host: &str, backup_dir: &str) -> String {
 
 pub fn clear_dtcs_json(host: &str, backup_dir: &str) -> String {
     let res = (|| {
-        let transport = MhdWifiTransport::connect(host, Duration::from_secs(5))?;
+        let transport = connect_transport(host)?;
         let backups = BackupManager::new(backup_dir)?;
         let mut session = HandosSession::new(transport, backups);
         let info = session.scan_vehicle()?;

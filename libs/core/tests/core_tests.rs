@@ -370,3 +370,17 @@ fn discovers_reachable_mhd_endpoints_in_parallel() {
     assert!(json.contains("\"ok\":true"));
     assert!(json.contains(&active_addr));
 }
+
+#[test]
+fn kdcan_fd_endpoint_rejects_invalid_descriptors() {
+    let dir = TempDir::new().unwrap();
+    let dir_str = dir.path().to_str().unwrap();
+
+    let bad = handos_core::ffi::scan_vehicle_json("kdcan-fd://notanint", dir_str);
+    assert!(bad.contains("\"ok\":false"));
+    assert!(bad.contains("invalid USB file descriptor"));
+
+    let neg = handos_core::ffi::scan_vehicle_json("kdcan-fd://-1?baud=115200", dir_str);
+    assert!(neg.contains("\"ok\":false"));
+    assert!(neg.contains("negative USB file descriptor"));
+}
